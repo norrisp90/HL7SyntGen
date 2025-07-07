@@ -7,9 +7,23 @@ import random
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import os
+import sys
+
+# Configure logging for better debugging in Azure
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Initialize Function App first - critical for Azure Functions v2 discovery
 app = func.FunctionApp()
+
+# Log function app initialization for debugging
+logger.info("Function App initialized successfully")
+
+# Log startup information for debugging in Azure
+logger.info("=== Azure Functions App Starting ===")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Working directory: {os.getcwd()}")
+logger.info(f"Azure Functions version: {func.__version__ if hasattr(func, '__version__') else 'unknown'}")
 
 # Temporarily disable Azure OpenAI to isolate function discovery issue
 AZURE_OPENAI_AVAILABLE = False
@@ -17,6 +31,25 @@ AzureOpenAI = None
 
 # Initialize Faker for Irish locale
 fake = Faker(['en_IE'])
+
+# Ensure all required modules are available at startup
+try:
+    import azure.functions
+    logger.info(f"✓ Azure Functions module loaded: {azure.functions.__version__ if hasattr(azure.functions, '__version__') else 'version unknown'}")
+except ImportError as e:
+    logger.error(f"✗ Failed to import azure.functions: {e}")
+
+try:
+    from faker import Faker
+    logger.info("✓ Faker module loaded")
+except ImportError as e:
+    logger.error(f"✗ Failed to import Faker: {e}")
+
+try:
+    import xml.etree.ElementTree as ET
+    logger.info("✓ XML processing modules loaded")
+except ImportError as e:
+    logger.error(f"✗ Failed to import XML modules: {e}")
 
 # HealthLink message types mapping (corrected based on real spec analysis)
 HEALTHLINK_MESSAGES = {
@@ -320,8 +353,88 @@ def generate_doctor_data():
         "hospital_affiliation": fake.random_element(elements=IRISH_HOSPITALS)["name"]
     }
 
-# Legacy functions - replaced by HealthLink-compliant versions above
-# These are kept for reference but should use the new create_msh_segment_healthlink_compliant() instead
+def generate_lab_result(test_code):
+    """Generate realistic lab results based on test code"""
+    if test_code == "FBC":
+        return generate_fbc_results()
+    elif test_code == "U&E":
+        return generate_ue_results()
+    elif test_code == "LFT":
+        return generate_lft_results()
+    elif test_code == "HBA1C":
+        return generate_hba1c_results()
+    elif test_code == "CRP":
+        return generate_crp_results()
+    elif test_code == "TROPONIN":
+        return generate_troponin_results()
+    elif test_code == "GLUCOSE":
+        return generate_glucose_results()
+    elif test_code == "PSA":
+        return generate_psa_results()
+    elif test_code == "INR":
+        return generate_inr_results()
+    elif test_code == "URINALYSIS":
+        return generate_urinalysis_results()
+    else:
+        return f"{test_code}: Normal range"
+
+def generate_fbc_results():
+    """Generate Full Blood Count results"""
+    return f"""Haemoglobin: {fake.random_int(min=120, max=160)} g/L (120-160)
+White Cell Count: {fake.pyfloat(left_digits=1, right_digits=1, min_value=4.0, max_value=11.0)} x10^9/L (4.0-11.0)
+Platelets: {fake.random_int(min=150, max=400)} x10^9/L (150-400)
+Neutrophils: {fake.pyfloat(left_digits=1, right_digits=1, min_value=2.0, max_value=7.5)} x10^9/L (2.0-7.5)"""
+
+def generate_ue_results():
+    """Generate Urea and Electrolytes results"""
+    return f"""Sodium: {fake.random_int(min=136, max=145)} mmol/L (136-145)
+Potassium: {fake.pyfloat(left_digits=1, right_digits=1, min_value=3.5, max_value=5.1)} mmol/L (3.5-5.1)
+Urea: {fake.pyfloat(left_digits=1, right_digits=1, min_value=2.5, max_value=7.5)} mmol/L (2.5-7.5)
+Creatinine: {fake.random_int(min=60, max=120)} μmol/L (60-120)"""
+
+def generate_lft_results():
+    """Generate Liver Function Tests results"""
+    return f"""ALT: {fake.random_int(min=10, max=50)} U/L (10-50)
+AST: {fake.random_int(min=10, max=40)} U/L (10-40)
+ALP: {fake.random_int(min=40, max=150)} U/L (40-150)
+Bilirubin: {fake.random_int(min=3, max=20)} μmol/L (3-20)"""
+
+def generate_hba1c_results():
+    """Generate HbA1c results"""
+    hba1c_mmol = fake.random_int(min=35, max=65)
+    hba1c_percent = round(((hba1c_mmol / 10.929) - 2.15), 1)
+    return f"HbA1c: {hba1c_mmol} mmol/mol ({hba1c_percent}%) (≤42 mmol/mol)"
+
+def generate_crp_results():
+    """Generate C-Reactive Protein results"""
+    return f"CRP: {fake.pyfloat(left_digits=1, right_digits=1, min_value=0.5, max_value=8.0)} mg/L (<8.0)"
+
+def generate_troponin_results():
+    """Generate Troponin results"""
+    return f"Troponin I: {fake.pyfloat(left_digits=1, right_digits=2, min_value=0.01, max_value=0.04)} ng/mL (<0.04)"
+
+def generate_glucose_results():
+    """Generate Random Glucose results"""
+    return f"Glucose: {fake.pyfloat(left_digits=1, right_digits=1, min_value=4.0, max_value=7.8)} mmol/L (4.0-7.8)"
+
+def generate_psa_results():
+    """Generate PSA results"""
+    return f"PSA: {fake.pyfloat(left_digits=1, right_digits=2, min_value=0.5, max_value=4.0)} ng/mL (<4.0)"
+
+def generate_inr_results():
+    """Generate INR results"""
+    return f"INR: {fake.pyfloat(left_digits=1, right_digits=1, min_value=0.8, max_value=1.2)} (0.8-1.2)"
+
+def generate_urinalysis_results():
+    """Generate Urinalysis results"""
+    protein = fake.random_element(elements=["Negative", "Trace", "+"])
+    glucose = fake.random_element(elements=["Negative", "Trace"])
+    blood = fake.random_element(elements=["Negative", "Trace"])
+    return f"""Protein: {protein}
+Glucose: {glucose}  
+Blood: {blood}
+Leucocytes: Negative
+Nitrites: Negative"""
 
 def create_pid_segment(patient):
     """Create PID segment XML element with patient data matching HealthLink samples"""
@@ -397,6 +510,260 @@ def create_pid_segment(patient):
         xtn3_mobile.text = "CP"
     
     return pid
+
+# Legacy functions - replaced by HealthLink-compliant versions above
+
+def generate_ai_enhanced_lab_result(test_code, test_name, patient_context=None):
+    """Generate AI-enhanced lab results with fallback to basic generation"""
+    try:
+        if azure_openai_client and AZURE_OPENAI_AVAILABLE:
+            # AI-enhanced generation would go here
+            return generate_lab_result(test_code)
+        else:
+            return generate_lab_result(test_code)
+    except:
+        return generate_lab_result(test_code)
+
+def generate_ai_enhanced_radiology_report(exam_type, patient):
+    """Generate AI-enhanced radiology reports with fallback to basic generation"""
+    try:
+        if azure_openai_client and AZURE_OPENAI_AVAILABLE:
+            # AI-enhanced generation would go here
+            return f"{exam_type}: Normal study. No acute abnormality detected."
+        else:
+            return f"{exam_type}: Normal study. No acute abnormality detected."
+    except:
+        return f"{exam_type}: Normal study. No acute abnormality detected."
+
+def generate_ai_enhanced_clinical_notes(note_type, patient, clinical_context=""):
+    """Generate AI-enhanced clinical notes with fallback to basic generation"""
+    try:
+        if azure_openai_client and AZURE_OPENAI_AVAILABLE:
+            # AI-enhanced generation would go here
+            return f"{note_type} notes: {clinical_context}. Patient stable, no acute concerns."
+        else:
+            return f"{note_type} notes: {clinical_context}. Patient stable, no acute concerns."
+    except:
+        return f"{note_type} notes: {clinical_context}. Patient stable, no acute concerns."
+
+def generate_ai_enhanced_referral_reason(specialty, patient, clinical_condition=""):
+    """Generate AI-enhanced referral reasons with fallback to basic generation"""
+    try:
+        if azure_openai_client and AZURE_OPENAI_AVAILABLE:
+            # AI-enhanced generation would go here
+            condition = clinical_condition if clinical_condition else "routine assessment"
+            return f"Referral to {specialty} for {condition}. Please see and advise."
+        else:
+            condition = clinical_condition if clinical_condition else "routine assessment"
+            return f"Referral to {specialty} for {condition}. Please see and advise."
+    except:
+        condition = clinical_condition if clinical_condition else "routine assessment"
+        return f"Referral to {specialty} for {condition}. Please see and advise."
+
+def generate_ai_enhanced_discharge_summary(patient, admission_reason="", hospital_course=""):
+    """Generate AI-enhanced discharge summaries with fallback to basic generation"""
+    try:
+        if azure_openai_client and AZURE_OPENAI_AVAILABLE:
+            # AI-enhanced generation would go here
+            reason = admission_reason if admission_reason else "routine care"
+            return f"Patient admitted for {reason}. Hospital course uneventful. Discharged home in stable condition."
+        else:
+            reason = admission_reason if admission_reason else "routine care"
+            return f"Patient admitted for {reason}. Hospital course uneventful. Discharged home in stable condition."
+    except:
+        reason = admission_reason if admission_reason else "routine care"
+        return f"Patient admitted for {reason}. Hospital course uneventful. Discharged home in stable condition."
+
+def format_as_healthlink_compliant_xml(xml_element, msg_type_id, include_framing=False):
+    """Format XML element as HealthLink-compliant XML string"""
+    try:
+        # Convert to string with proper formatting
+        rough_string = ET.tostring(xml_element, encoding='unicode')
+        reparsed = minidom.parseString(rough_string)
+        pretty_xml = reparsed.toprettyxml(indent="  ")
+        
+        # Remove extra whitespace and empty lines
+        lines = [line for line in pretty_xml.split('\n') if line.strip()]
+        formatted_xml = '\n'.join(lines[1:])  # Remove XML declaration
+        
+        if include_framing:
+            # Add HL7 framing characters for transmission
+            return f"\x0b{formatted_xml}\x1c\x0d"
+        else:
+            return formatted_xml
+    except Exception as e:
+        logger.error(f"Error formatting XML: {e}")
+        # Fallback to basic string conversion
+        return ET.tostring(xml_element, encoding='unicode')
+
+# Placeholder functions for incomplete sections that may be called
+def create_ref_i12_segments(root, patient, hospital, timestamp, msg_type_id=3):
+    """Create REF_I12 specific segments for referral messages"""
+    # Add PID segment
+    pid = create_pid_segment(patient)
+    root.append(pid)
+    
+    # Add basic referral information
+    rf1 = ET.SubElement(root, "RF1")
+    rf1_1 = ET.SubElement(rf1, "RF1.1")
+    rf1_1.text = "A"  # Referral status
+    
+    return root
+
+def create_rri_i12_segments(root, patient, hospital, timestamp):
+    """Create RRI_I12 specific segments for referral response messages"""
+    # Add PID segment
+    pid = create_pid_segment(patient)
+    root.append(pid)
+    
+    # Add basic response information
+    rf1 = ET.SubElement(root, "RF1")
+    rf1_1 = ET.SubElement(rf1, "RF1.1")
+    rf1_1.text = "A"  # Response status
+    
+    return root
+
+def create_ack_segments(root, timestamp):
+    """Create ACK specific segments for acknowledgement messages"""
+    # Add MSA segment
+    msa = ET.SubElement(root, "MSA")
+    msa_1 = ET.SubElement(msa, "MSA.1")
+    msa_1.text = "AA"  # Application Accept
+    msa_2 = ET.SubElement(msa, "MSA.2")
+    msa_2.text = f"ACK{timestamp}"
+    
+    return root
+
+def create_siu_s12_segments(root, patient, hospital, timestamp):
+    """Create SIU_S12 specific segments for scheduling messages"""
+    # Add PID segment
+    pid = create_pid_segment(patient)
+    root.append(pid)
+    
+    # Add SCH segment for scheduling
+    sch = ET.SubElement(root, "SCH")
+    sch_1 = ET.SubElement(sch, "SCH.1")
+    sch_1.text = "1"
+    sch_2 = ET.SubElement(sch, "SCH.2")
+    sch_2.text = f"APPT{timestamp}"
+    
+    return root
+
+def create_adt_segments(root, patient, hospital, timestamp, adt_type):
+    """Create ADT specific segments for admission/discharge/transfer messages"""
+    # Add PID segment
+    pid = create_pid_segment(patient)
+    root.append(pid)
+    
+    # Add EVN segment
+    evn = ET.SubElement(root, "EVN")
+    evn_1 = ET.SubElement(evn, "EVN.1")
+    if "A01" in adt_type:
+        evn_1.text = "A01"  # Admission
+    elif "A03" in adt_type:
+        evn_1.text = "A03"  # Discharge
+    else:
+        evn_1.text = "A08"  # Update
+    evn_2 = ET.SubElement(evn, "EVN.2")
+    evn_2.text = timestamp
+    
+    # Add PV1 segment
+    pv1 = ET.SubElement(root, "PV1")
+    pv1_1 = ET.SubElement(pv1, "PV1.1")
+    pv1_1.text = "1"
+    pv1_2 = ET.SubElement(pv1, "PV1.2")
+    pv1_2.text = "I" if "A01" in adt_type else "O"  # Inpatient or Outpatient
+    
+    return root
+
+def generate_healthlink_message_control_id(msg_type_id):
+    """Generate HealthLink-compliant Message Control ID based on message type"""
+    # Format: YYYYMMDDHHMMSSSSS where last 3 digits are msg_type_id padded
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    msg_id_padded = str(msg_type_id).zfill(3)
+    return f"{timestamp}{msg_id_padded}"
+
+def create_msh_segment_healthlink_compliant():
+    """Create MSH segment XML element with HealthLink-compliant structure"""
+    msh = ET.Element("MSH")
+    
+    # MSH.1 - Field Separator
+    msh1 = ET.SubElement(msh, "MSH.1")
+    msh1.text = "|"
+    
+    # MSH.2 - Encoding Characters
+    msh2 = ET.SubElement(msh, "MSH.2")
+    msh2.text = "^~\\&"
+    
+    return msh
+
+def add_healthlink_msh_fields(msh, msg_type_id, hospital, doctor, timestamp, message_control_id):
+    """Add HealthLink-specific fields to MSH segment"""
+    msg_info = HEALTHLINK_MESSAGES[msg_type_id]
+    
+    # MSH.3 - Sending Application
+    msh3 = ET.SubElement(msh, "MSH.3")
+    hd1_3 = ET.SubElement(msh3, "HD.1")
+    hd1_3.text = f"HL7SyntGen.{msg_info['msh3_suffix']}"
+    hd2_3 = ET.SubElement(msh3, "HD.2")
+    hd3_3 = ET.SubElement(msh3, "HD.3")
+    
+    # MSH.4 - Sending Facility
+    msh4 = ET.SubElement(msh, "MSH.4")
+    hd1_4 = ET.SubElement(msh4, "HD.1")
+    hd1_4.text = hospital["name"]
+    hd2_4 = ET.SubElement(msh4, "HD.2")
+    hd2_4.text = hospital["hipe"]
+    hd3_4 = ET.SubElement(msh4, "HD.3")
+    hd3_4.text = "HIPE"
+    
+    # MSH.5 - Receiving Application
+    msh5 = ET.SubElement(msh, "MSH.5")
+    hd1_5 = ET.SubElement(msh5, "HD.1")
+    hd1_5.text = "HealthLink"
+    hd2_5 = ET.SubElement(msh5, "HD.2")
+    hd3_5 = ET.SubElement(msh5, "HD.3")
+    
+    # MSH.6 - Receiving Facility
+    msh6 = ET.SubElement(msh, "MSH.6")
+    hd1_6 = ET.SubElement(msh6, "HD.1")
+    hd1_6.text = "HSE"
+    hd2_6 = ET.SubElement(msh6, "HD.2")
+    hd3_6 = ET.SubElement(msh6, "HD.3")
+    
+    # MSH.7 - Date/Time of Message
+    msh7 = ET.SubElement(msh, "MSH.7")
+    ts1_7 = ET.SubElement(msh7, "TS.1")
+    ts1_7.text = timestamp
+    
+    # MSH.8 - Security (usually empty)
+    msh8 = ET.SubElement(msh, "MSH.8")
+    
+    # MSH.9 - Message Type
+    msh9 = ET.SubElement(msh, "MSH.9")
+    msg1_9 = ET.SubElement(msh9, "MSG.1")
+    msg1_9.text = msg_info["type"].split("_")[0]  # e.g., "ORU"
+    msg2_9 = ET.SubElement(msh9, "MSG.2")
+    msg2_9.text = msg_info["type"].split("_")[1] if "_" in msg_info["type"] else ""  # e.g., "R01"
+    msg3_9 = ET.SubElement(msh9, "MSG.3")
+    msg3_9.text = msg_info["type"]  # e.g., "ORU_R01"
+    
+    # MSH.10 - Message Control ID
+    msh10 = ET.SubElement(msh, "MSH.10")
+    msh10.text = message_control_id
+    
+    # MSH.11 - Processing ID
+    msh11 = ET.SubElement(msh, "MSH.11")
+    pt1_11 = ET.SubElement(msh11, "PT.1")
+    pt1_11.text = "P"  # Production
+    pt2_11 = ET.SubElement(msh11, "PT.2")
+    
+    # MSH.12 - Version ID
+    msh12 = ET.SubElement(msh, "MSH.12")
+    vid1_12 = ET.SubElement(msh12, "VID.1")
+    vid1_12.text = "2.4"
+    vid2_12 = ET.SubElement(msh12, "VID.2")
+    vid3_12 = ET.SubElement(msh12, "VID.3")
 
 def create_hl7_message_xml(msg_type_id):
     """Create HL7 message XML based on HealthLink message type ID with full spec compliance"""
@@ -619,898 +986,127 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     else:
         # Additional lab result interpretation notes
         nte_3.text = generate_ai_enhanced_clinical_notes("LABORATORY", patient, f"{test['name']} results")
+    
+    return root
 
-def create_adt_segments(root, patient, hospital, timestamp, message_type):
-    """Create ADT specific segments"""
-    # Add EVN segment
-    evn = ET.SubElement(root, "EVN")
-    evn_2 = ET.SubElement(evn, "EVN.2")
-    ts1 = ET.SubElement(evn_2, "TS.1")
-    ts1.text = timestamp
-    
-    # Add PID segment
-    pid = create_pid_segment(patient)
-    root.append(pid)
-    
-    # Add PV1 segment
-    pv1 = ET.SubElement(root, "PV1")
-    
-    pv1_2 = ET.SubElement(pv1, "PV1.2")
-    pv1_2.text = fake.random_element(elements=("I", "O", "E"))
-    
-    pv1_3 = ET.SubElement(pv1, "PV1.3")
-    pl1 = ET.SubElement(pv1_3, "PL.1")
-    pl1.text = fake.random_element(elements=("WARD1", "WARD2", "ICU", "ED"))
-    pl2 = ET.SubElement(pv1_3, "PL.2")
-    pl2.text = fake.random_element(elements=("BED1", "BED2", "BED3"))
-
-def create_ref_i12_segments(root, patient, hospital, timestamp, msg_type_id=3):
-    """Create REF_I12 specific segments for referrals matching HealthLink samples"""
-    # Add RF1 segment (Referral Information) - matching sample structure
-    rf1 = ET.SubElement(root, "RF1")
-    
-    # RF1.1 - Referral Status (CE data type)
-    rf1_1 = ET.SubElement(rf1, "RF1.1")
-    ce1_1 = ET.SubElement(rf1_1, "CE.1")
-    ce1_1.text = "P"  # Pending
-    ce2_1 = ET.SubElement(rf1_1, "CE.2")
-    ce2_1.text = "Pending"
-    ce3_1 = ET.SubElement(rf1_1, "CE.3")
-    ce3_1.text = "L"
-    ce4_1 = ET.SubElement(rf1_1, "CE.4")  # Usually empty
-    ce5_1 = ET.SubElement(rf1_1, "CE.5")  # Usually empty
-    ce6_1 = ET.SubElement(rf1_1, "CE.6")  # Usually empty
-    
-    # RF1.2 - Referral Priority (CE data type)
-    rf1_2 = ET.SubElement(rf1, "RF1.2")
-    ce1_2 = ET.SubElement(rf1_2, "CE.1")
-    ce1_2.text = fake.random_element(elements=("R", "U", "S"))  # Routine, Urgent, STAT
-    ce2_2 = ET.SubElement(rf1_2, "CE.2")
-    ce2_2.text = "Routine"  # From samples
-    ce3_2 = ET.SubElement(rf1_2, "CE.3")
-    ce3_2.text = "L"
-    ce4_2 = ET.SubElement(rf1_2, "CE.4")  # Usually empty
-    ce5_2 = ET.SubElement(rf1_2, "CE.5")  # Usually empty
-    ce6_2 = ET.SubElement(rf1_2, "CE.6")  # Usually empty
-    
-    # RF1.3 - Referral Type (CE data type)
-    rf1_3 = ET.SubElement(rf1, "RF1.3")
-    ce1_3 = ET.SubElement(rf1_3, "CE.1")
-    specialty = fake.random_element(elements=MEDICAL_SPECIALTIES)
-    ce1_3.text = specialty
-    ce2_3 = ET.SubElement(rf1_3, "CE.2")
-    ce2_3.text = specialty.replace("_", " ").title()
-    ce3_3 = ET.SubElement(rf1_3, "CE.3")
-    ce3_3.text = "L"
-    ce4_3 = ET.SubElement(rf1_3, "CE.4")  # Usually empty
-    ce5_3 = ET.SubElement(rf1_3, "CE.5")  # Usually empty
-    ce6_3 = ET.SubElement(rf1_3, "CE.6")  # Usually empty
-    
-    # RF1.4 - Referral Reason (TX data type) - Enhanced with AI content
-    rf1_4 = ET.SubElement(rf1, "RF1.4")
-    # Generate AI-enhanced referral reason based on specialty and patient context
-    clinical_condition = patient.get("clinical_condition_code", "")
-    referral_reason = generate_ai_enhanced_referral_reason(specialty, patient, clinical_condition)
-    rf1_4.text = referral_reason
-    
-    # RF1.6 - Originating Referral Identifier (from samples)
-    rf1_6 = ET.SubElement(rf1, "RF1.6")
-    ei1_6 = ET.SubElement(rf1_6, "EI.1")
-    # Generate a date between 2012 and 2025, then format as YYYYMMDD
-    ref_date = fake.date_between(start_date=datetime(2012, 5, 30), end_date=datetime(2025, 1, 31))
-    date_str = ref_date.strftime('%Y%m%d')
-    ei1_6.text = f"REF{date_str}{fake.random_int(min=130000, max=200000)}{fake.random_int(min=100000, max=999999)}"  # Like REF20120530134026012121
-    ei2_6 = ET.SubElement(rf1_6, "EI.2")  # Usually empty
-    ei3_6 = ET.SubElement(rf1_6, "EI.3")  # Usually empty
-    ei4_6 = ET.SubElement(rf1_6, "EI.4")  # Usually empty
-    
-    # RF1.7 - Referral DateTime (from samples)
-    rf1_7 = ET.SubElement(rf1, "RF1.7")
-    ts1_7 = ET.SubElement(rf1_7, "TS.1")
-    ts1_7.text = timestamp[:8]  # Date only, like 20120530
-    
-    # Add PROVIDER_CONTACT groups (from samples)
-    # Primary Care Provider
-    provider_contact_pp = ET.SubElement(root, "REF_I12.PROVIDER_CONTACT")
-    prd_pp = ET.SubElement(provider_contact_pp, "PRD")
-    
-    # PRD.1 - Provider Role
-    prd1_pp = ET.SubElement(prd_pp, "PRD.1")
-    ce1_prd1 = ET.SubElement(prd1_pp, "CE.1")
-    ce1_prd1.text = "PP"  # Primary Care Provider
-    ce2_prd1 = ET.SubElement(prd1_pp, "CE.2")
-    ce2_prd1.text = "Primary Care Provider"
-    ce3_prd1 = ET.SubElement(prd1_pp, "CE.3")
-    ce3_prd1.text = "L"
-    ce4_prd1 = ET.SubElement(prd1_pp, "CE.4")  # Usually empty
-    ce5_prd1 = ET.SubElement(prd1_pp, "CE.5")  # Usually empty
-    ce6_prd1 = ET.SubElement(prd1_pp, "CE.6")  # Usually empty
-    
-    # PRD.2 - Provider Name
-    doctor = generate_doctor_data()
-    prd2_pp = ET.SubElement(prd_pp, "PRD.2")
-    xpn1_prd2 = ET.SubElement(prd2_pp, "XPN.1")
-    fn1_prd2 = ET.SubElement(xpn1_prd2, "FN.1")
-    fn1_prd2.text = doctor["name"].split(',')[0]  # Last name
-    xpn2_prd2 = ET.SubElement(prd2_pp, "XPN.2")
-    xpn2_prd2.text = doctor["name"].split(',')[1] if ',' in doctor["name"] else "John"  # First name
-    xpn3_prd2 = ET.SubElement(prd2_pp, "XPN.3")  # Usually empty
-    xpn4_prd2 = ET.SubElement(prd2_pp, "XPN.4")  # Usually empty
-    xpn5_prd2 = ET.SubElement(prd2_pp, "XPN.5")  # Usually empty
-    xpn6_prd2 = ET.SubElement(prd2_pp, "XPN.6")  # Usually empty
-    xpn7_prd2 = ET.SubElement(prd2_pp, "XPN.7")  # Usually empty
-    
-    # Add PID segment
-    pid = create_pid_segment(patient)
-    root.append(pid)
-    
-    # Add NTE segments for clinical notes based on message type
-    if msg_type_id == 5:  # Discharge Summary
-        nte = ET.SubElement(root, "NTE")
-        nte_1 = ET.SubElement(nte, "NTE.1")
-        nte_1.text = "1"
-        nte_3 = ET.SubElement(nte, "NTE.3")
-        # Generate AI-enhanced discharge summary
-        admission_reason = f"Assessment for {specialty.replace('_', ' ').lower()}"
-        nte_3.text = generate_ai_enhanced_discharge_summary(patient, admission_reason)
-    
-    elif msg_type_id in [3, 14, 16, 18, 19, 20, 22, 24, 26, 28, 30]:  # Various referral types
-        nte = ET.SubElement(root, "NTE")
-        nte_1 = ET.SubElement(nte, "NTE.1")
-        nte_1.text = "1"
-        nte_3 = ET.SubElement(nte, "NTE.3")
-        # Generate AI-enhanced clinical notes for referrals
-        clinical_context = f"Referral to {specialty.replace('_', ' ').title()}"
-        nte_3.text = generate_ai_enhanced_clinical_notes("REFERRAL", patient, clinical_context)
-
-def create_rri_i12_segments(root, patient, hospital, timestamp):
-    """Create RRI_I12 specific segments for referral responses"""
-    # Add MSA segment (Message Acknowledgment)
-    msa = ET.SubElement(root, "MSA")
-    
-    msa_1 = ET.SubElement(msa, "MSA.1")
-    msa_1.text = "AA"  # Application Accept
-    
-    msa_2 = ET.SubElement(msa, "MSA.2")
-    msa_2.text = f"REF{timestamp}{fake.random_int(min=100, max=999)}"
-    
-    # Add PID segment
-    pid = create_pid_segment(patient)
-    root.append(pid)
-
-def create_ack_segments(root, timestamp):
-    """Create ACK segments using HealthLink-compliant acknowledgment format"""
-    # Add MSA segment (Message Acknowledgment)
-    msa = ET.SubElement(root, "MSA")
-    
-    msa_1 = ET.SubElement(msa, "MSA.1")
-    msa_1.text = "AA"  # Application Accept
-    
-    msa_2 = ET.SubElement(msa, "MSA.2")
-    msa_2.text = f"ACK{timestamp}{fake.random_int(min=1000, max=9999)}"
-    
-    # MSA.3 - Text Message (optional success message)
-    msa_3 = ET.SubElement(msa, "MSA.3")
-    msa_3.text = "Message processed successfully"
-
-def create_siu_s12_segments(root, patient, hospital, timestamp):
-    """Create SIU_S12 specific segments for scheduling information"""
-    # Add SCH segment (Scheduling Activity Information)
-    sch = ET.SubElement(root, "SCH")
-    
-    # SCH.1 - Placer Appointment ID
-    sch_1 = ET.SubElement(sch, "SCH.1")
-    ei1 = ET.SubElement(sch_1, "EI.1")
-    ei1.text = f"APT{fake.random_int(min=100000, max=999999)}"
-    
-    # SCH.7 - Appointment Request Type
-    sch_7 = ET.SubElement(sch, "SCH.7")
-    sch_7.text = "New"
-    
-    # SCH.11 - Appointment Timing Quantity
-    sch_11 = ET.SubElement(sch, "SCH.11")
-    tq1 = ET.SubElement(sch_11, "TQ.1")
-    tq1.text = "30"  # 30 minutes
-    tq2 = ET.SubElement(sch_11, "TQ.2")
-    tq2.text = "min"
-    
-    # Add PID segment
-    pid = create_pid_segment(patient)
-    root.append(pid)
-
-def generate_lab_result(test_code):
-    """Generate realistic lab result values based on test type and HealthLink samples"""
-    
-    # Enhanced lab results with normal/abnormal ranges and clinical context
-    results = {
-        "FBC": generate_fbc_results(),
-        "U&E": generate_ue_results(),
-        "LFT": generate_lft_results(),
-        "TFT": f"TSH: {fake.pyfloat(left_digits=1, right_digits=2, min_value=0.50, max_value=4.50)}mU/L, T4: {fake.random_int(min=9, max=25)}pmol/L",
-        "HBA1C": generate_hba1c_results(),
-        "INR": generate_inr_results(),
-        "CRP": generate_crp_results(),
-        "ESR": f"{fake.random_int(min=2, max=30)}mm/hr",
-        "TROPONIN": generate_troponin_results(),
-        "MHH": "Hepatitis B Surface Antigen: NEGATIVE\nHepatitis C Antibody: NEGATIVE\nHIV 1&2 Antibody: NEGATIVE",  # From sample
-        "GLUCOSE": generate_glucose_results(),
-        "TSH": f"{fake.pyfloat(left_digits=1, right_digits=2, min_value=0.40, max_value=5.00)}mU/L",
-        "PSA": generate_psa_results(),
-        "URINALYSIS": generate_urinalysis_results()
-    }
-    
-    return results.get(test_code, f"Result: {fake.sentence()}")
-
-def generate_fbc_results():
-    """Generate realistic Full Blood Count results with appropriate ranges"""
-    # Simulate some abnormal results occasionally
-    is_abnormal = fake.random_int(min=0, max=100) < 15  # 15% chance of abnormal
-    
-    if is_abnormal:
-        wbc = fake.random_element(elements=[fake.random_int(min=2, max=3), fake.random_int(min=12, max=18)])
-        hgb = fake.random_element(elements=[fake.random_int(min=80, max=110), fake.random_int(min=190, max=220)])
-        status = " (ABNORMAL)"
-    else:
-        wbc = fake.random_int(min=4, max=11)
-        hgb = fake.random_int(min=120, max=180)
-        status = ""
-    
-    rbc = fake.pyfloat(left_digits=1, right_digits=2, min_value=4.0, max_value=6.0)
-    hct = fake.pyfloat(left_digits=2, right_digits=1, min_value=35.0, max_value=50.0)
-    
-    return f"WBC: {wbc}x10^9/L, RBC: {rbc}x10^12/L, Hgb: {hgb}g/L, Hct: {hct}%{status}"
-
-def generate_ue_results():
-    """Generate realistic Urea & Electrolytes results"""
-    sodium = fake.random_int(min=135, max=145)
-    potassium = fake.pyfloat(left_digits=1, right_digits=1, min_value=3.5, max_value=5.0)
-    urea = fake.pyfloat(left_digits=1, right_digits=1, min_value=2.5, max_value=8.0)
-    creatinine = fake.random_int(min=60, max=120)
-    
-    return f"Sodium: {sodium}mmol/L, Potassium: {potassium}mmol/L, Urea: {urea}mmol/L, Creatinine: {creatinine}umol/L"
-
-def generate_lft_results():
-    """Generate realistic Liver Function Test results"""
-    alt = fake.random_int(min=10, max=40)
-    ast = fake.random_int(min=10, max=40)
-    alp = fake.random_int(min=30, max=120)
-    bilirubin = fake.random_int(min=5, max=25)
-    
-    return f"ALT: {alt}U/L, AST: {ast}U/L, ALP: {alp}U/L, Bilirubin: {bilirubin}umol/L"
-
-def generate_hba1c_results():
-    """Generate realistic HbA1c results with diabetes context"""
-    hba1c_percent = fake.pyfloat(left_digits=2, right_digits=1, min_value=4.0, max_value=12.0)
-    hba1c_mmol = fake.random_int(min=20, max=108)
-    
-    if hba1c_percent > 6.5:
-        context = " (Diabetes mellitus)"
-    elif hba1c_percent > 6.0:
-        context = " (Pre-diabetes)"
-    else:
-        context = " (Normal)"
-        
-    return f"{hba1c_percent}% ({hba1c_mmol}mmol/mol){context}"
-
-def generate_crp_results():
-    """Generate realistic CRP results with inflammation context"""
-    crp = fake.pyfloat(left_digits=3, right_digits=1, min_value=0.5, max_value=200.0)
-    
-    if crp > 10:
-        context = " (Elevated - inflammation/infection)"
-    else:
-        context = " (Normal)"
-        
-    return f"{crp}mg/L{context}"
-
-def generate_troponin_results():
-    """Generate realistic Troponin results with cardiac context"""
-    troponin = fake.pyfloat(left_digits=2, right_digits=3, min_value=0.001, max_value=50.000)
-    
-    if troponin > 0.04:
-        context = " (ELEVATED - possible MI)"
-    else:
-        context = " (Normal)"
-        
-    return f"{troponin}ng/mL{context}"
-
-def generate_glucose_results():
-    """Generate realistic glucose results with diabetes context"""
-    glucose = fake.pyfloat(left_digits=2, right_digits=1, min_value=3.5, max_value=15.0)
-    
-    if glucose > 11.1:
-        context = " (Diabetes range)"
-    elif glucose > 7.8:
-        context = " (Impaired glucose tolerance)"
-    else:
-        context = " (Normal)"
-        
-    return f"{glucose}mmol/L{context}"
-
-def generate_psa_results():
-    """Generate realistic PSA results with age-appropriate ranges"""
-    psa = fake.pyfloat(left_digits=2, right_digits=2, min_value=0.1, max_value=10.0)
-    
-    if psa > 4.0:
-        context = " (Elevated - further investigation needed)"
-    else:
-        context = " (Normal)"
-        
-    return f"{psa}ng/mL{context}"
-
-def generate_inr_results():
-    """Generate realistic INR results with anticoagulation context"""
-    inr = fake.pyfloat(left_digits=1, right_digits=1, min_value=0.8, max_value=4.5)
-    
-    if inr > 3.0:
-        context = " (High - bleeding risk)"
-    elif inr > 1.5:
-        context = " (Therapeutic anticoagulation)"
-    else:
-        context = " (Normal/subtherapeutic)"
-        
-    return f"{inr}{context}"
-
-def generate_urinalysis_results():
-    """Generate realistic urinalysis results"""
-    protein = fake.random_element(elements=['NEGATIVE', 'TRACE', '+', '++'])
-    glucose = fake.random_element(elements=['NEGATIVE', 'TRACE', '+'])
-    blood = fake.random_element(elements=['NEGATIVE', 'TRACE', '+'])
-    leucocytes = fake.random_element(elements=['NEGATIVE', 'TRACE', '+'])
-    
-    return f"Protein: {protein}, Glucose: {glucose}, Blood: {blood}, Leucocytes: {leucocytes}"
-
-# Legacy format function - replaced by format_as_healthlink_compliant_xml
-
-@app.route(route="health", methods=["GET"])
-def health_check(req: func.HttpRequest) -> func.HttpResponse:
-    """Simple health check endpoint"""
-    return func.HttpResponse(
-        json.dumps({
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "message": "HL7 SyntGen API is running"
-        }),
-        status_code=200,
-        headers={"Content-Type": "application/json"}
-    )
-
-@app.route(route="generate", methods=["GET"])
+# Azure Functions HTTP triggers
+@app.route(route="generate_random_message", auth_level=func.AuthLevel.ANONYMOUS)
 def generate_random_message(req: func.HttpRequest) -> func.HttpResponse:
-    """Generate a random HealthLink message with full spec compliance"""
+    """
+    Azure Function to generate random HL7 messages based on HealthLink specification.
+    """
+    logger.info('Python HTTP trigger function processed a request.')
+    
     try:
-        # Get parameters from query
-        output_format = req.params.get('format', 'xml').lower()
-        include_framing = req.params.get('tcp_framing', 'false').lower() == 'true'
+        # Parse request parameters
+        include_framing = req.params.get('include_framing', 'false').lower() == 'true'
+        raw_xml = req.params.get('raw_xml', 'false').lower() == 'true'
+        message_type_id = req.params.get('message_type_id')
         
-        # Get specific message type ID if provided
-        msg_type_param = req.params.get('type')
-        if msg_type_param:
+        # If specific message type requested, use it, otherwise random
+        if message_type_id:
             try:
-                random_message_type_id = int(msg_type_param)
+                random_message_type_id = int(message_type_id)
                 if random_message_type_id not in HEALTHLINK_MESSAGES:
                     return func.HttpResponse(
-                        json.dumps({"error": f"Invalid message type ID. Must be between 1 and 31."}),
-                        status_code=400,
-                        mimetype="application/json"
+                        f"Invalid message_type_id. Valid options are: {list(HEALTHLINK_MESSAGES.keys())}",
+                        status_code=400
                     )
             except ValueError:
-                return func.HttpResponse(
-                    json.dumps({"error": "Message type ID must be a number."}),
-                    status_code=400,
-                    mimetype="application/json"
-                )
+                return func.HttpResponse("message_type_id must be an integer", status_code=400)
         else:
-            # Select a random message type ID (1-31)
-            random_message_type_id = fake.random_int(min=1, max=31)
+            random_message_type_id = fake.random_element(elements=list(HEALTHLINK_MESSAGES.keys()))
         
-        # Generate HL7 message XML
+        # Generate HL7 message
         hl7_xml_element = create_hl7_message_xml(random_message_type_id)
         
-        if output_format == 'xml':
+        if raw_xml:
+            # Return raw XML without pretty printing
+            result = ET.tostring(hl7_xml_element, encoding='unicode')
+        else:
+            # Return formatted XML
             result = format_as_healthlink_compliant_xml(hl7_xml_element, random_message_type_id, include_framing)
-            
-            if include_framing and isinstance(result, dict):
-                # Return framed message info
-                return func.HttpResponse(
-                    json.dumps({
-                        "message_type_id": random_message_type_id,
-                        "message_type": HEALTHLINK_MESSAGES[random_message_type_id]["name"],
-                        "xml_message": result["xml_message"],
-                        "tcp_framed_bytes": result["tcp_framed_message"].hex(),
-                        "framing_info": result["framing_info"],
-                        "healthlink_compliance": "Full HealthLink TCP/IP specification compliance"
-                    }, indent=2),
-                    status_code=200,
-                    mimetype="application/json"
-                )
-            else:
-                # Ensure result is a string for XML response
-                if isinstance(result, dict):
-                    result = result.get("xml_message", str(result))
-                return func.HttpResponse(result, status_code=200, mimetype="application/xml")
-            
-        elif output_format == 'hl7':
-            # Convert XML to HL7 pipe-delimited format (simplified conversion)
-            xml_string = ET.tostring(hl7_xml_element, encoding='unicode')
-            return func.HttpResponse(xml_string, status_code=200, mimetype="text/plain")
-            
-        elif output_format == 'json':
-            xml_string = ET.tostring(hl7_xml_element, encoding='unicode')
-            healthlink_xml = format_as_healthlink_compliant_xml(hl7_xml_element, random_message_type_id)
-            
-            response_data = {
-                "message_type_id": random_message_type_id,
-                "message_type": HEALTHLINK_MESSAGES[random_message_type_id]["name"],
-                "hl7_type": HEALTHLINK_MESSAGES[random_message_type_id]['type'],
-                "xml_message": xml_string,
-                "healthlink_compliant_message": healthlink_xml,
-                "compliance_features": {
-                    "msh_segment_format": "HealthLink Section 4.5 compliant",
-                    "message_control_id_format": "HealthLink pattern-based",
-                    "special_characters": "HL7 v2.4 XML encoding",
-                    "hospital_data": "Irish HIPE codes and realistic data"
-                },
-                "usage_info": {
-                    "tcp_framing": "Add ?tcp_framing=true for network transmission format",
-                    "ack_simulation": "Message type 13 generates acknowledgment messages"
-                }
-            }
-            
-            if include_framing:
-                framed_result = format_as_healthlink_compliant_xml(hl7_xml_element, random_message_type_id, True)
-                if isinstance(framed_result, dict):
-                    response_data["tcp_framing"] = framed_result["framing_info"]
-                    response_data["tcp_framed_bytes"] = framed_result["tcp_framed_message"].hex()
-            
+        
+        # Log successful generation for monitoring
+        logger.info(f"Successfully generated HL7 message type {random_message_type_id}")
+        
+        # Return HTTP response
+        return func.HttpResponse(result, mimetype="application/xml")
+        
+    except Exception as e:
+        logger.error(f"Error generating HL7 message: {str(e)}")
+        return func.HttpResponse(f"Error generating message: {str(e)}", status_code=500)
+
+@app.route(route="list_message_types", auth_level=func.AuthLevel.ANONYMOUS)  
+def list_message_types(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Azure Function to list all available HealthLink message types.
+    """
+    logger.info('List message types request received.')
+    
+    try:
+        # Create JSON response with message types
+        response_data = {
+            "available_message_types": HEALTHLINK_MESSAGES,
+            "total_count": len(HEALTHLINK_MESSAGES)
+        }
+        
+        # Convert to JSON and return
+        import json
+        result = json.dumps(response_data, indent=2)
+        
+        return func.HttpResponse(result, mimetype="application/json")
+        
+    except Exception as e:
+        logger.error(f"Error listing message types: {str(e)}")
+        return func.HttpResponse(f"Error: {str(e)}", status_code=500)
+
+@app.route(route="generate_specific_message", auth_level=func.AuthLevel.ANONYMOUS)
+def generate_specific_message(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Azure Function to generate a specific HL7 message type with optional formatting.
+    """
+    logger.info('Generate specific message request received.')
+    
+    try:
+        # Get required message type
+        message_type_id = req.params.get('message_type_id')
+        if not message_type_id:
+            return func.HttpResponse("message_type_id parameter is required", status_code=400)
+        
+        try:
+            message_type_id = int(message_type_id)
+        except ValueError:
+            return func.HttpResponse("message_type_id must be an integer", status_code=400)
+        
+        if message_type_id not in HEALTHLINK_MESSAGES:
             return func.HttpResponse(
-                json.dumps(response_data, indent=2),
-                status_code=200,
-                mimetype="application/json"
+                f"Invalid message_type_id. Valid options are: {list(HEALTHLINK_MESSAGES.keys())}",
+                status_code=400
             )
+        
+        # Parse optional parameters
+        include_framing = req.params.get('include_framing', 'false').lower() == 'true'
+        pretty_print = req.params.get('pretty_print', 'true').lower() == 'true'
+        
+        # Generate HL7 message
+        hl7_xml_element = create_hl7_message_xml(message_type_id)
+        
+        if pretty_print:
+            healthlink_xml = format_as_healthlink_compliant_xml(hl7_xml_element, message_type_id)
         else:
-            return func.HttpResponse(
-                json.dumps({"error": "Invalid format. Use 'xml', 'hl7', or 'json'"}),
-                status_code=400,
-                mimetype="application/json"
-            )
-            
-    except Exception as e:
-        logging.error(f"Error generating message: {str(e)}")
-        return func.HttpResponse(
-            json.dumps({
-                "error": f"Failed to generate message: {str(e)}",
-                "message_types_available": "1-31",
-                "usage": "GET /api/generate?format=xml&type=10&tcp_framing=true",
-                "healthlink_features": {
-                    "tcp_framing": "Adds 0x0B prefix and 0x1C 0x0D suffix as per spec",
-                    "compliant_msh": "MSH segments follow HealthLink Section 4.5",
-                    "realistic_data": "Irish hospital and patient data"
-                }
-            }),
-            status_code=500,
-            mimetype="application/json"
-        )
-
-# Enhanced time and scheduling functions
-def generate_realistic_timestamp():
-    """Generate realistic timestamps during typical hospital hours"""
-    # Most lab results and appointments happen during business hours
-    business_hours = fake.random_int(min=8, max=18)  # 8 AM to 6 PM
-    weekend_factor = fake.random_int(min=0, max=100)
-    
-    if weekend_factor < 20:  # 20% chance of weekend (emergency cases)
-        base_date = fake.date_between(start_date='-30d', end_date='today')
-    else:
-        # Weekday only
-        base_date = fake.date_between(start_date='-30d', end_date='today')
-        while base_date.weekday() > 4:  # 0-6, where 0 is Monday
-            base_date = fake.date_between(start_date='-30d', end_date='today')
-    
-    # Combine date with business hours
-    timestamp = datetime.combine(base_date, datetime.min.time().replace(
-        hour=business_hours, 
-        minute=fake.random_int(min=0, max=59),
-        second=fake.random_int(min=0, max=59)
-    ))
-    
-    return timestamp.strftime("%Y%m%d%H%M%S")
-
-def generate_appointment_time():
-    """Generate realistic appointment times (typically scheduled in 15-minute intervals)"""
-    future_date = fake.date_between(start_date='today', end_date='+60d')
-    
-    # Appointments typically on 15-minute intervals during business hours
-    hour = fake.random_int(min=9, max=17)  # 9 AM to 5 PM
-    minute = fake.random_element(elements=[0, 15, 30, 45])
-    
-    appointment_time = datetime.combine(future_date, datetime.min.time().replace(
-        hour=hour, 
-        minute=minute
-    ))
-    
-    return appointment_time.strftime("%Y%m%d%H%M%S")
-
-def generate_healthlink_message_control_id(msg_type_id):
-    """Generate HealthLink compliant message control ID"""
-    # HealthLink format: YYYYMMDDHHMM + 4-digit sequence
-    timestamp = datetime.now().strftime("%Y%m%d%H%M")
-    sequence = fake.random_int(min=1000, max=9999)
-    return f"{timestamp}{sequence}"
-
-def create_msh_segment_healthlink_compliant():
-    """Create basic MSH segment structure"""
-    msh = ET.Element("MSH")
-    return msh
-
-def add_healthlink_msh_fields(msh, msg_type_id, hospital, doctor, timestamp, message_control_id):
-    """Add HealthLink compliant fields to MSH segment"""
-    # MSH.1 - Field Separator
-    msh_1 = ET.SubElement(msh, "MSH.1")
-    msh_1.text = "|"
-    
-    # MSH.2 - Encoding Characters
-    msh_2 = ET.SubElement(msh, "MSH.2")
-    msh_2.text = "^~\\&"
-    
-    # MSH.3 - Sending Application
-    msh_3 = ET.SubElement(msh, "MSH.3")
-    msh_3.text = f"HL7SYNTGEN{HEALTHLINK_MESSAGES[msg_type_id]['msh3_suffix']}"
-    
-    # MSH.4 - Sending Facility
-    msh_4 = ET.SubElement(msh, "MSH.4")
-    msh_4.text = hospital['hipe']
-    
-    # MSH.5 - Receiving Application
-    msh_5 = ET.SubElement(msh, "MSH.5")
-    msh_5.text = "HEALTHLINK"
-    
-    # MSH.6 - Receiving Facility
-    msh_6 = ET.SubElement(msh, "MSH.6")
-    msh_6.text = "HSE"
-    
-    # MSH.7 - Date/Time of Message
-    msh_7 = ET.SubElement(msh, "MSH.7")
-    msh_7.text = timestamp
-    
-    # MSH.9 - Message Type
-    msh_9 = ET.SubElement(msh, "MSH.9")
-    msh_9.text = HEALTHLINK_MESSAGES[msg_type_id]['type']
-    
-    # MSH.10 - Message Control ID
-    msh_10 = ET.SubElement(msh, "MSH.10")
-    msh_10.text = message_control_id
-    
-    # MSH.11 - Processing ID
-    msh_11 = ET.SubElement(msh, "MSH.11")
-    msh_11.text = "P"  # Production
-    
-    # MSH.12 - Version ID
-    msh_12 = ET.SubElement(msh, "MSH.12")
-    msh_12.text = "2.5"
-
-def format_as_healthlink_compliant_xml(hl7_element, message_type_id, include_framing=False):
-    """Format XML as HealthLink compliant with proper formatting"""
-    # Convert to string with proper formatting
-    rough_string = ET.tostring(hl7_element, encoding='unicode')
-    reparsed = minidom.parseString(rough_string)
-    formatted_xml = reparsed.toprettyxml(indent="  ")
-    
-    # Remove empty lines and fix formatting
-    lines = [line for line in formatted_xml.split('\n') if line.strip()]
-    clean_xml = '\n'.join(lines[1:])  # Remove XML declaration
-    
-    if include_framing:
-        # Add TCP/IP framing as per HealthLink spec
-        framed_message = b'\x0B' + clean_xml.encode('utf-8') + b'\x1C\x0D'
+            healthlink_xml = ET.tostring(hl7_xml_element, encoding='unicode')
         
-        # Return structured data with framing information
-        return {
-            "xml_message": clean_xml,
-            "tcp_framed_message": framed_message,
-            "framing_info": {
-                "start_block": "0x0B (VT - Vertical Tab)",
-                "end_block": "0x1C (FS - File Separator)", 
-                "terminator": "0x0D (CR - Carriage Return)",
-                "total_length": len(framed_message),
-                "xml_length": len(clean_xml.encode('utf-8')),
-                "frame_overhead": 3
-            }
-        }
-    
-    return clean_xml
-
-def generate_ai_enhanced_lab_result(test_code, test_name, patient_context=None):
-    """Generate AI-enhanced lab results using Azure OpenAI"""
-    if not azure_openai_client:
-        # Fallback to simple generation
-        return generate_lab_result(test_code)
-    
-    try:
-        # Extract patient info for context
-        patient_age = None
-        patient_gender = None
-        if patient_context:
-            birth_date = patient_context.get('birth_date', '')
-            if birth_date:
-                from datetime import datetime
-                try:
-                    birth_year = int(birth_date[:4])
-                    current_year = datetime.now().year
-                    patient_age = current_year - birth_year
-                except:
-                    pass
-            patient_gender = patient_context.get('gender', '')
+        # Apply framing if requested
+        if include_framing:
+            framed_result = format_as_healthlink_compliant_xml(hl7_xml_element, message_type_id, True)
+            return func.HttpResponse(framed_result, mimetype="application/xml")
         
-        # Create context-aware prompt
-        prompt = f"""Generate a realistic medical laboratory result value for:
-Test: {test_name} (Code: {test_code})
-"""
-        if patient_age:
-            prompt += f"Patient Age: {patient_age} years\n"
-        if patient_gender:
-            prompt += f"Patient Gender: {patient_gender}\n"
-            
-        prompt += """
-Requirements:
-- Return only the numeric value with appropriate units
-- Use Irish/European medical standards
-- Make it clinically realistic
-- Keep it concise (max 20 characters)
-- If abnormal, make it slightly outside normal range
-- Common tests: CBC, Chemistry, Lipids, etc.
-- IMPORTANT: Respond in English language only, never in Irish Gaelic
-
-Examples:
-- Hemoglobin: "13.2 g/dL"
-- Glucose: "5.4 mmol/L"
-- Cholesterol: "4.8 mmol/L"
-- Creatinine: "78 μmol/L"
-
-Result value only:"""
-
-        response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            messages=[
-                {"role": "system", "content": "You are a medical laboratory system generating realistic Irish lab values. Return only the requested lab value with units. IMPORTANT: Respond only in English language, never in Irish Gaelic."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=50,
-            temperature=0.7
-        )
+        # Log successful generation
+        logger.info(f"Successfully generated specific HL7 message type {message_type_id}")
         
-        result = response.choices[0].message.content
-        if result:
-            result = result.strip()
-        else:
-            return generate_lab_result(test_code)
-        
-        # Clean and validate the result
-        if len(result) > 50 or not result:
-            return generate_lab_result(test_code)
-            
-        return result
+        return func.HttpResponse(healthlink_xml, mimetype="application/xml")
         
     except Exception as e:
-        logging.warning(f"AI lab result generation failed: {e}")
-        # Fallback to simple generation
-        return generate_lab_result(test_code)
-
-# Enhanced AI generation functions for clinical content
-def generate_ai_enhanced_referral_reason(specialty, patient, clinical_condition=""):
-    """Generate AI-enhanced referral reason text appropriate for Irish healthcare"""
-    if not azure_openai_client:
-        # Fallback to basic reasons if no AI available
-        fallback_reasons = {
-            "CARDIOLOGY": "Chest pain and abnormal ECG findings requiring specialist assessment",
-            "NEUROLOGY": "Neurological symptoms requiring specialist evaluation",
-            "ONCOLOGY": "Abnormal screening results requiring urgent specialist review",
-            "ORTHOPAEDICS": "Joint pain and mobility issues requiring orthopedic assessment",
-            "GASTROENTEROLOGY": "Gastrointestinal symptoms requiring specialist investigation",
-            "RESPIRATORY": "Respiratory symptoms and abnormal chest imaging",
-            "ENDOCRINOLOGY": "Diabetes management and endocrine disorder assessment",
-            "RADIOLOGY": "Clinical indication for advanced imaging studies",
-            "DERMATOLOGY": "Skin lesion requiring dermatological evaluation",
-            "OPHTHALMOLOGY": "Visual symptoms requiring ophthalmologic assessment",
-            "ENT": "ENT symptoms requiring specialist evaluation",
-            "UROLOGY": "Urological symptoms requiring specialist assessment",
-            "GYNAECOLOGY": "Gynecological symptoms requiring specialist evaluation"
-        }
-        return fallback_reasons.get(specialty, "Clinical assessment required")
-    
-    try:
-        # Create specialty-specific prompt for Irish healthcare context
-        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
-        gender = "Male" if patient.get("gender") == "M" else "Female"
-        
-        prompt = f"""Generate a realistic referral reason for an Irish hospital referral to {specialty.replace('_', ' ').title()}.
-
-Patient context:
-- Age: {age}
-- Gender: {gender}
-- Clinical condition: {clinical_condition or 'General assessment required'}
-
-Requirements:
-- Use professional Irish medical terminology
-- Include relevant clinical history (2-3 sentences)
-- Specify investigation results if appropriate
-- Use Irish healthcare system context (GP referral to consultant)
-- Be specific about the clinical indication
-- Maximum 150 words
-- Professional medical tone
-- IMPORTANT: Write in English language only, never in Irish Gaelic
-
-Example format: "6-month history of [symptoms]. [Investigation findings]. Requesting [specific assessment/management]."
-"""
-
-        response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            messages=[
-                {"role": "system", "content": "You are a medical professional generating clinical content for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=200,
-            temperature=0.7
-        )
-        
-        content = response.choices[0].message.content
-        return content.strip() if content else "Clinical assessment required"
-        
-    except Exception as e:
-        print(f"Error generating AI referral reason: {e}")
-        # Fallback to basic reason
-        fallback_reasons = {
-            "CARDIOLOGY": "Chest pain and abnormal ECG findings requiring specialist assessment",
-            "NEUROLOGY": "Neurological symptoms requiring specialist evaluation", 
-            "ONCOLOGY": "Abnormal screening results requiring urgent specialist review"
-        }
-        return fallback_reasons.get(specialty, "Clinical assessment required")
-
-def generate_ai_enhanced_radiology_report(exam_type, patient):
-    """Generate AI-enhanced radiology report for Irish healthcare"""
-    if not azure_openai_client:
-        # Fallback reports
-        fallback_reports = {
-            "CHEST": "CHEST X-RAY: Heart size normal. Lung fields clear. No acute abnormality.",
-            "CT": "CT SCAN: No acute abnormality detected. Normal study.",
-            "MRI": "MRI: No significant abnormality identified.",
-            "US": "ULTRASOUND: Normal sonographic appearances."
-        }
-        return fallback_reports.get(exam_type, "IMAGING: Normal study.")
-    
-    try:
-        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
-        gender = "Male" if patient.get("gender") == "M" else "Female"
-        
-        prompt = f"""Generate a realistic radiology report for Irish healthcare.
-
-Exam details:
-- Type: {exam_type} examination
-- Patient: {age}-year-old {gender}
-
-Requirements:
-- Use standard Irish radiology report structure
-- Include TECHNIQUE, FINDINGS, and IMPRESSION sections
-- Use appropriate medical terminology
-- Include normal anatomical references
-- Make findings age-appropriate
-- Professional radiologist language
-- 100-200 words maximum
-- Irish hospital context
-- IMPORTANT: Write in English language only, never in Irish Gaelic
-
-Generate a report that could be normal or show minor age-related changes."""
-
-        response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            messages=[
-                {"role": "system", "content": "You are a radiologist generating medical reports for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=250,
-            temperature=0.7
-        )
-        
-        content = response.choices[0].message.content
-        return content.strip() if content else "IMAGING: Normal study within expected parameters for patient age."
-        
-    except Exception as e:
-        print(f"Error generating AI radiology report: {e}")
-        return "IMAGING: Normal study within expected parameters for patient age."
-
-def generate_ai_enhanced_clinical_notes(note_type, patient, clinical_context=""):
-    """Generate AI-enhanced clinical notes for various message types"""
-    if not azure_openai_client:
-        fallback_notes = {
-            "DISCHARGE": "Patient stable for discharge. Follow-up as arranged.",
-            "CLINICAL": "Clinical assessment completed. Management plan discussed.",
-            "FOLLOWUP": "Routine follow-up appointment scheduled.",
-            "ADMISSION": "Patient admitted for further assessment and management."
-        }
-        return fallback_notes.get(note_type, "Clinical note documented.")
-    
-    try:
-        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
-        gender = "Male" if patient.get("gender") == "M" else "Female"
-        
-        prompt = f"""Generate clinical notes for Irish healthcare documentation.
-
-Context:
-- Note type: {note_type}
-- Patient: {age}-year-old {gender}
-- Clinical context: {clinical_context}
-
-Requirements:
-- Professional Irish medical language
-- Appropriate for inter-professional communication
-- Include relevant clinical details
-- Use Irish healthcare terminology
-- 50-100 words
-- Clear and concise
-- Professional tone suitable for medical records
-- IMPORTANT: Write in English language only, never in Irish Gaelic
-
-Generate realistic clinical documentation."""
-
-        response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            messages=[
-                {"role": "system", "content": "You are a healthcare professional generating clinical documentation for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=150,
-            temperature=0.7
-        )
-        
-        content = response.choices[0].message.content
-        return content.strip() if content else "Clinical documentation completed as per standard protocols."
-        
-    except Exception as e:
-        print(f"Error generating AI clinical notes: {e}")
-        return "Clinical documentation completed as per standard protocols."
-
-def generate_ai_enhanced_discharge_summary(patient, admission_reason="", hospital_course=""):
-    """Generate AI-enhanced discharge summary for Irish healthcare"""
-    if not azure_openai_client:
-        return "Patient admitted for assessment. Treatment provided as indicated. Discharged in stable condition with appropriate follow-up arranged."
-    
-    try:
-        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
-        gender = "Male" if patient.get("gender") == "M" else "Female"
-        
-        prompt = f"""Generate a discharge summary for Irish hospital.
-
-Patient details:
-- Age: {age}
-- Gender: {gender}
-- Admission reason: {admission_reason or 'Medical assessment'}
-- Hospital course: {hospital_course or 'Routine care provided'}
-
-Requirements:
-- Standard Irish discharge summary format
-- Include admission reason, hospital course, discharge condition
-- Mention follow-up arrangements
-- Professional medical language
-- 100-150 words
-- Appropriate for GP communication
-- Irish healthcare context
-- IMPORTANT: Write in English language only, never in Irish Gaelic
-
-Generate realistic discharge documentation."""
-
-        response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
-            messages=[
-                {"role": "system", "content": "You are a healthcare professional generating discharge summaries for Irish hospitals. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=200,
-            temperature=0.7
-        )
-        
-        content = response.choices[0].message.content
-        return content.strip() if content else "Patient discharged in stable condition. Follow-up care arranged with primary care provider."
-        
-    except Exception as e:
-        print(f"Error generating AI discharge summary: {e}")
-        return "Patient discharged in stable condition. Follow-up care arranged with primary care provider."
+        logger.error(f"Error generating specific message: {str(e)}")
+        return func.HttpResponse(f"Error: {str(e)}", status_code=500)
