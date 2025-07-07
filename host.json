@@ -1,0 +1,17 @@
+{
+  "version": "2.0",
+  "functionAppScaleLimit": 200,
+  "extensions": {
+    "bundles": [
+      {
+        "id": "Microsoft.Azure.Functions.ExtensionBundle",
+        "version": "[4.0.0, 5.0.0)"
+      }
+    ]
+  },
+  "logging": {
+    "logLevel": {
+      "default": "Information"
+    }
+  }
+}

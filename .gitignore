@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# HealthLink HL7 Project specific
+# Message samples and specifications - typically contain test/sample data
+Message Samples/
+Spec/

@@ -1,0 +1,15 @@
+# Azure Functions
+azure-functions>=1.19.0
+
+# Data Generation - for creating realistic Irish patient data
+faker>=19.0.0
+
+# Date/time handling
+python-dateutil>=2.8.0
+
+# Logging and monitoring
+opencensus-ext-azure>=1.1.0
+
+# Azure OpenAI for AI-enhanced content generation
+openai>=1.0.0
+azure-identity>=1.15.0
