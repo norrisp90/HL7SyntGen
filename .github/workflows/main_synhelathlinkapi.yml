@@ -40,9 +40,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           
+          # Validate function app structure
+          echo "Validating Function App structure..."
+          ls -la
+          echo "Checking for function_app.py..."
+          cat function_app.py | head -20
+          echo "Checking for host.json..."
+          cat host.json
+          echo "Checking for requirements.txt..."
+          cat requirements.txt
+          
       - name: Archive production artifacts
         run: |
-          # Create archive excluding development files but including runtime.txt
+          # Ensure all required files are present
+          echo "Files before archiving:"
+          ls -la
+          
+          # Create archive excluding development files but including ALL required runtime files
           zip -r release.zip . -x \
             "venv/*" \
             ".git/*" \
@@ -53,7 +67,13 @@ jobs:
             "tests/*" \
             ".vscode/*" \
             ".idea/*" \
-            "test_functions.py"
+            "test_functions.py" \
+            ".DS_Store" \
+            "*.log"
+            
+          # Verify archive contents
+          echo "Archive contents:"
+          unzip -l release.zip
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -77,7 +97,18 @@ jobs:
           name: python-app
 
       - name: Unzip artifact for deployment
-        run: unzip release.zip     
+        run: |
+          unzip release.zip
+          echo "Deployment files:"
+          ls -la
+          echo "Checking function_app.py exists:"
+          test -f function_app.py && echo "✓ function_app.py found" || echo "✗ function_app.py missing"
+          echo "Checking host.json exists:"
+          test -f host.json && echo "✓ host.json found" || echo "✗ host.json missing"
+          echo "Checking requirements.txt exists:"
+          test -f requirements.txt && echo "✓ requirements.txt found" || echo "✗ requirements.txt missing"
+          echo "Checking runtime.txt exists:"
+          test -f runtime.txt && echo "✓ runtime.txt found" || echo "✗ runtime.txt missing"     
         
       - name: Login to Azure
         uses: azure/login@v2
@@ -93,6 +124,6 @@ jobs:
           app-name: 'synhelathlinkapi'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          scm-do-build-during-deployment: false
+          scm-do-build-during-deployment: true
           enable-oryx-build: true
           

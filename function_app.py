@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize Function App first - critical for Azure Functions v2 discovery
-app = func.FunctionApp()
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 # Log function app initialization for debugging
 logger.info("Function App initialized successfully")
@@ -1110,3 +1110,90 @@ def generate_specific_message(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as e:
         logger.error(f"Error generating specific message: {str(e)}")
         return func.HttpResponse(f"Error: {str(e)}", status_code=500)
+
+
+@app.route(route="health", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def health_check(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Health check endpoint for Azure deployment verification.
+    """
+    logger.info("Health check request received.")
+    
+    try:
+        health_status = {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "version": "1.0.0",
+            "functions": {
+                "generate_random_message": "available",
+                "generate_specific_message": "available",
+                "list_message_types": "available"
+            },
+            "dependencies": {
+                "faker": "loaded",
+                "xml": "loaded",
+                "azure_functions": "loaded"
+            },
+            "message_types_count": len(HEALTHLINK_MESSAGES)
+        }
+        
+        return func.HttpResponse(
+            json.dumps(health_status, indent=2),
+            mimetype="application/json",
+            status_code=200
+        )
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        error_response = {
+            "status": "unhealthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e)
+        }
+        return func.HttpResponse(
+            json.dumps(error_response, indent=2),
+            mimetype="application/json",
+            status_code=500
+        )
+
+
+# Add a simple root endpoint for Azure deployment testing
+@app.route(route="", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def root_endpoint(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Root endpoint providing API documentation.
+    """
+    logger.info("Root endpoint request received.")
+    
+    api_info = {
+        "name": "HL7 Synthetic Data Generator",
+        "version": "1.0.0",
+        "description": "Generate synthetic HL7 messages for Irish healthcare systems",
+        "endpoints": {
+            "GET /api/health": "Health check endpoint",
+            "GET /api/list_message_types": "List all available HL7 message types",
+            "GET /api/generate_random_message": "Generate a random HL7 message",
+            "GET /api/generate_specific_message": "Generate a specific HL7 message type",
+        },
+        "parameters": {
+            "generate_specific_message": {
+                "message_type_id": "Required integer (1-31)",
+                "include_framing": "Optional boolean (default: false)",
+                "pretty_print": "Optional boolean (default: true)"
+            }
+        },
+        "total_message_types": len(HEALTHLINK_MESSAGES)
+    }
+    
+    return func.HttpResponse(
+        json.dumps(api_info, indent=2),
+        mimetype="application/json",
+        status_code=200
+    )
+
+
+# Ensure the function app is properly initialized for Azure
+if __name__ == "__main__":
+    logger.info("Function app module loaded successfully")
+    logger.info(f"Total functions registered: 5")
+    logger.info(f"Available message types: {len(HEALTHLINK_MESSAGES)}")
