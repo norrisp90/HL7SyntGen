@@ -1,4 +1,0 @@
-# Minimal requirements for testing deployment
-azure-functions>=1.19.0
-faker>=19.0.0
-python-dateutil>=2.8.0

@@ -226,6 +226,26 @@ IRISH_CONSULTANTS = [
 
 app = func.FunctionApp()
 
+# Initialize Azure OpenAI client
+azure_openai_client = None
+try:
+    if AZURE_OPENAI_AVAILABLE and AzureOpenAI:
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+        
+        if endpoint and api_key:
+            azure_openai_client = AzureOpenAI(
+                azure_endpoint=endpoint,
+                api_key=api_key,
+                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            )
+            print("SUCCESS: Azure OpenAI client initialized successfully")
+        else:
+            print("WARNING: Azure OpenAI credentials not found in environment variables")
+except Exception as e:
+    print(f"ERROR: Could not initialize Azure OpenAI client: {str(e)}")
+    azure_openai_client = None
+
 def generate_patient_data():
     """Generate synthetic Irish patient data with realistic HealthLink values"""
     # Generate Irish-specific data based on samples
@@ -412,7 +432,7 @@ def create_hl7_message_xml(msg_type_id):
     # Add message-specific segments based on message type
     if msg_info["type"] == "ORU_R01":
         # Laboratory/Radiology Result
-        create_oru_r01_segments(root, patient, hospital, timestamp)
+        create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id)
         
     elif msg_info["type"].startswith("ADT"):
         # Admission/Discharge/Transfer
@@ -420,7 +440,7 @@ def create_hl7_message_xml(msg_type_id):
         
     elif msg_info["type"] == "REF_I12":
         # Referral
-        create_ref_i12_segments(root, patient, hospital, timestamp)
+        create_ref_i12_segments(root, patient, hospital, timestamp, msg_type_id)
         
     elif msg_info["type"] == "RRI_I12":
         # Referral Response
@@ -441,7 +461,7 @@ def create_hl7_message_xml(msg_type_id):
     
     return root
 
-def create_oru_r01_segments(root, patient, hospital, timestamp):
+def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     """Create ORU_R01 specific segments for lab/radiology results matching HealthLink samples"""
     # Create PATIENT_RESULT group
     patient_result = ET.SubElement(root, "ORU_R01.PATIENT_RESULT")
@@ -566,14 +586,46 @@ def create_oru_r01_segments(root, patient, hospital, timestamp):
     ce3_obx.text = "L"
     
     obx_5 = ET.SubElement(obx, "OBX.5")
-    # Use AI-enhanced lab result generation if available
-    if azure_openai_client:
-        obx_5.text = generate_ai_enhanced_lab_result(test["code"], test["name"], patient)
+    # Determine if this is a radiology result (message type 7 or 17) or lab result
+    is_radiology = msg_type_id in [7, 17]  # Radiology Result, Cardiology Result
+    
+    if is_radiology:
+        # Use AI-enhanced radiology report generation
+        if azure_openai_client:
+            try:
+                exam_type = test["name"] if "name" in test else test["code"]
+                obx_5.text = generate_ai_enhanced_radiology_report(exam_type, patient)
+            except:
+                # Fallback to basic radiology report
+                obx_5.text = f"{test['name']}: Normal study. No acute abnormality detected."
+        else:
+            obx_5.text = f"{test['name']}: Normal study. No acute abnormality detected."
     else:
-        obx_5.text = generate_lab_result(test["code"])
+        # Use AI-enhanced lab result generation for lab results
+        if azure_openai_client:
+            try:
+                obx_5.text = generate_ai_enhanced_lab_result(test["code"], test["name"], patient)
+            except:
+                # Fallback to regular generation if AI fails
+                obx_5.text = generate_lab_result(test["code"])
+        else:
+            obx_5.text = generate_lab_result(test["code"])
     
     obx_11 = ET.SubElement(obx, "OBX.11")
     obx_11.text = "F"  # Final
+    
+    # Add NTE segment for additional clinical context
+    nte = ET.SubElement(observation, "NTE")
+    nte_1 = ET.SubElement(nte, "NTE.1")
+    nte_1.text = "1"
+    nte_3 = ET.SubElement(nte, "NTE.3")
+    
+    if is_radiology:
+        # Additional radiology interpretation notes
+        nte_3.text = generate_ai_enhanced_clinical_notes("RADIOLOGY", patient, f"{test['name']} interpretation")
+    else:
+        # Additional lab result interpretation notes
+        nte_3.text = generate_ai_enhanced_clinical_notes("LABORATORY", patient, f"{test['name']} results")
 
 def create_adt_segments(root, patient, hospital, timestamp, message_type):
     """Create ADT specific segments"""
@@ -599,7 +651,7 @@ def create_adt_segments(root, patient, hospital, timestamp, message_type):
     pl2 = ET.SubElement(pv1_3, "PL.2")
     pl2.text = fake.random_element(elements=("BED1", "BED2", "BED3"))
 
-def create_ref_i12_segments(root, patient, hospital, timestamp):
+def create_ref_i12_segments(root, patient, hospital, timestamp, msg_type_id=3):
     """Create REF_I12 specific segments for referrals matching HealthLink samples"""
     # Add RF1 segment (Referral Information) - matching sample structure
     rf1 = ET.SubElement(root, "RF1")
@@ -640,6 +692,13 @@ def create_ref_i12_segments(root, patient, hospital, timestamp):
     ce4_3 = ET.SubElement(rf1_3, "CE.4")  # Usually empty
     ce5_3 = ET.SubElement(rf1_3, "CE.5")  # Usually empty
     ce6_3 = ET.SubElement(rf1_3, "CE.6")  # Usually empty
+    
+    # RF1.4 - Referral Reason (TX data type) - Enhanced with AI content
+    rf1_4 = ET.SubElement(rf1, "RF1.4")
+    # Generate AI-enhanced referral reason based on specialty and patient context
+    clinical_condition = patient.get("clinical_condition_code", "")
+    referral_reason = generate_ai_enhanced_referral_reason(specialty, patient, clinical_condition)
+    rf1_4.text = referral_reason
     
     # RF1.6 - Originating Referral Identifier (from samples)
     rf1_6 = ET.SubElement(rf1, "RF1.6")
@@ -691,6 +750,25 @@ def create_ref_i12_segments(root, patient, hospital, timestamp):
     # Add PID segment
     pid = create_pid_segment(patient)
     root.append(pid)
+    
+    # Add NTE segments for clinical notes based on message type
+    if msg_type_id == 5:  # Discharge Summary
+        nte = ET.SubElement(root, "NTE")
+        nte_1 = ET.SubElement(nte, "NTE.1")
+        nte_1.text = "1"
+        nte_3 = ET.SubElement(nte, "NTE.3")
+        # Generate AI-enhanced discharge summary
+        admission_reason = f"Assessment for {specialty.replace('_', ' ').lower()}"
+        nte_3.text = generate_ai_enhanced_discharge_summary(patient, admission_reason)
+    
+    elif msg_type_id in [3, 14, 16, 18, 19, 20, 22, 24, 26, 28, 30]:  # Various referral types
+        nte = ET.SubElement(root, "NTE")
+        nte_1 = ET.SubElement(nte, "NTE.1")
+        nte_1.text = "1"
+        nte_3 = ET.SubElement(nte, "NTE.3")
+        # Generate AI-enhanced clinical notes for referrals
+        clinical_context = f"Referral to {specialty.replace('_', ' ').title()}"
+        nte_3.text = generate_ai_enhanced_clinical_notes("REFERRAL", patient, clinical_context)
 
 def create_rri_i12_segments(root, patient, hospital, timestamp):
     """Create RRI_I12 specific segments for referral responses"""
@@ -1060,306 +1138,369 @@ def generate_appointment_time():
     
     return appointment_time.strftime("%Y%m%d%H%M%S")
 
-# Clinical decision support and referral reasons
-REFERRAL_REASONS = {
-    "CARDIOLOGY": [
-        "Chest pain investigation",
-        "Hypertension management",
-        "Heart murmur assessment",
-        "Atrial fibrillation management",
-        "Coronary artery disease follow-up",
-        "Palpitations investigation"
-    ],
-    "NEUROLOGY": [
-        "Headache investigation",
-        "Seizure disorder",
-        "Memory problems assessment",
-        "Tremor investigation",
-        "Stroke follow-up",
-        "Multiple sclerosis investigation"
-    ],
-    "ONCOLOGY": [
-        "Cancer screening follow-up",
-        "Abnormal imaging findings",
-        "Family history of cancer",
-        "Suspicious lesion investigation",
-        "Cancer treatment planning",
-        "Genetic counselling"
-    ],
-    "ORTHOPAEDICS": [
-        "Joint pain assessment",
-        "Sports injury",
-        "Fracture management",
-        "Arthritis investigation",
-        "Back pain assessment",
-        "Mobility issues"
-    ],
-    "GASTROENTEROLOGY": [
-        "Abdominal pain investigation",
-        "Inflammatory bowel disease",
-        "Liver function abnormalities",
-        "Endoscopy required",
-        "Digestive disorder assessment",
-        "Weight loss investigation"
-    ]
-}
+def generate_healthlink_message_control_id(msg_type_id):
+    """Generate HealthLink compliant message control ID"""
+    # HealthLink format: YYYYMMDDHHMM + 4-digit sequence
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+    sequence = fake.random_int(min=1000, max=9999)
+    return f"{timestamp}{sequence}"
 
-def generate_clinical_notes(patient_data, specialty=None):
-    """Generate realistic clinical notes based on patient context"""
-    notes = []
-    
-    # Add patient demographics context
-    age = patient_data.get('age', 50)
-    gender = patient_data.get('gender', 'M')
-    
-    if age > 65:
-        notes.append("Elderly patient requiring comprehensive assessment")
-    
-    # Add clinical condition context
-    if patient_data.get('clinical_condition'):
-        notes.append(f"Known history of {patient_data['clinical_condition']}")
-    
-    # Add specialty-specific context
-    if specialty and specialty in REFERRAL_REASONS:
-        reason = fake.random_element(elements=REFERRAL_REASONS[specialty])
-        notes.append(f"Referral reason: {reason}")
-    
-    # Add medication context (simplified)
-    if age > 60 or patient_data.get('clinical_condition'):
-        medications = fake.random_element(elements=[
-            "On antihypertensive therapy",
-            "Taking diabetes medication",
-            "On anticoagulation therapy",
-            "Pain management required",
-            "No known drug allergies"
-        ])
-        notes.append(medications)
-    
-    return " | ".join(notes) if notes else "Routine assessment"
+def create_msh_segment_healthlink_compliant():
+    """Create basic MSH segment structure"""
+    msh = ET.Element("MSH")
+    return msh
 
-# AI-Enhanced Medical Content Generation Functions
-
-def call_azure_openai(prompt, max_tokens=150, temperature=0.7):
-    """Call Azure OpenAI with error handling and fallback"""
-    if not azure_openai_client:
-        return None
+def add_healthlink_msh_fields(msh, msg_type_id, hospital, doctor, timestamp, message_control_id):
+    """Add HealthLink compliant fields to MSH segment"""
+    # MSH.1 - Field Separator
+    msh_1 = ET.SubElement(msh, "MSH.1")
+    msh_1.text = "|"
     
-    try:
-        response = azure_openai_client.chat.completions.create(
-            model=AZURE_OPENAI_DEPLOYMENT,
-            messages=[
-                {"role": "system", "content": "You are a medical AI assistant helping generate realistic medical content for HealthLink HL7 messages. Provide concise, clinically appropriate responses."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Azure OpenAI call failed: {e}")
-        return None
+    # MSH.2 - Encoding Characters
+    msh_2 = ET.SubElement(msh, "MSH.2")
+    msh_2.text = "^~\\&"
+    
+    # MSH.3 - Sending Application
+    msh_3 = ET.SubElement(msh, "MSH.3")
+    msh_3.text = f"HL7SYNTGEN{HEALTHLINK_MESSAGES[msg_type_id]['msh3_suffix']}"
+    
+    # MSH.4 - Sending Facility
+    msh_4 = ET.SubElement(msh, "MSH.4")
+    msh_4.text = hospital['hipe']
+    
+    # MSH.5 - Receiving Application
+    msh_5 = ET.SubElement(msh, "MSH.5")
+    msh_5.text = "HEALTHLINK"
+    
+    # MSH.6 - Receiving Facility
+    msh_6 = ET.SubElement(msh, "MSH.6")
+    msh_6.text = "HSE"
+    
+    # MSH.7 - Date/Time of Message
+    msh_7 = ET.SubElement(msh, "MSH.7")
+    msh_7.text = timestamp
+    
+    # MSH.9 - Message Type
+    msh_9 = ET.SubElement(msh, "MSH.9")
+    msh_9.text = HEALTHLINK_MESSAGES[msg_type_id]['type']
+    
+    # MSH.10 - Message Control ID
+    msh_10 = ET.SubElement(msh, "MSH.10")
+    msh_10.text = message_control_id
+    
+    # MSH.11 - Processing ID
+    msh_11 = ET.SubElement(msh, "MSH.11")
+    msh_11.text = "P"  # Production
+    
+    # MSH.12 - Version ID
+    msh_12 = ET.SubElement(msh, "MSH.12")
+    msh_12.text = "2.5"
+
+def format_as_healthlink_compliant_xml(hl7_element, message_type_id, include_framing=False):
+    """Format XML as HealthLink compliant with proper formatting"""
+    # Convert to string with proper formatting
+    rough_string = ET.tostring(hl7_element, encoding='unicode')
+    reparsed = minidom.parseString(rough_string)
+    formatted_xml = reparsed.toprettyxml(indent="  ")
+    
+    # Remove empty lines and fix formatting
+    lines = [line for line in formatted_xml.split('\n') if line.strip()]
+    clean_xml = '\n'.join(lines[1:])  # Remove XML declaration
+    
+    if include_framing:
+        # Add TCP/IP framing as per HealthLink spec
+        framed_message = b'\x0B' + clean_xml.encode('utf-8') + b'\x1C\x0D'
+        
+        # Return structured data with framing information
+        return {
+            "xml_message": clean_xml,
+            "tcp_framed_message": framed_message,
+            "framing_info": {
+                "start_block": "0x0B (VT - Vertical Tab)",
+                "end_block": "0x1C (FS - File Separator)", 
+                "terminator": "0x0D (CR - Carriage Return)",
+                "total_length": len(framed_message),
+                "xml_length": len(clean_xml.encode('utf-8')),
+                "frame_overhead": 3
+            }
+        }
+    
+    return clean_xml
 
 def generate_ai_enhanced_lab_result(test_code, test_name, patient_context=None):
-    """Generate realistic lab results using Azure OpenAI with proper medical context"""
-    
-    # Fallback to existing function if AI not available
+    """Generate AI-enhanced lab results using Azure OpenAI"""
     if not azure_openai_client:
+        # Fallback to simple generation
         return generate_lab_result(test_code)
     
-    # Build context-aware prompt
-    patient_info = ""
-    if patient_context:
-        age = patient_context.get('age', 'unknown')
-        gender = patient_context.get('gender', 'unknown')
-        condition = patient_context.get('clinical_condition', '')
-        patient_info = f"Patient: {age}yo {gender}. "
-        if condition:
-            patient_info += f"Known condition: {condition}. "
-    
-    prompt = f"""Generate a realistic {test_name} ({test_code}) laboratory result for an Irish hospital HealthLink system.
-{patient_info}
-
-Requirements:
-- Use appropriate medical units and reference ranges for Irish laboratories
-- 85% chance of normal results, 15% chance of mild abnormalities
-- Include specific numeric values with units (e.g., "12.5 g/dL", "4.2 mmol/L")
-- Format as a concise clinical report
-- Use terminology appropriate for Irish healthcare (e.g., "mmol/L" not "mg/dL" for glucose)
-
-Example format: "Haemoglobin: 13.2 g/dL (Normal range: 12.0-16.0)"
-
-Result:"""
-
-    ai_result = call_azure_openai(prompt, max_tokens=200, temperature=0.6)
-    
-    # Return AI result or fallback
-    return ai_result if ai_result else generate_lab_result(test_code)
-
-def generate_ai_enhanced_clinical_notes(patient_context, message_type, specialty=None):
-    """Generate realistic clinical notes using Azure OpenAI"""
-    
-    # Fallback to existing function if AI not available
-    if not azure_openai_client:
-        return generate_clinical_notes(patient_context, specialty)
-    
-    # Build comprehensive context
-    age = patient_context.get('age',  50)
-    gender = patient_context.get('gender', 'M')
-    condition = patient_context.get('clinical_condition', '')
-    
-    # Message type specific prompts
-    message_contexts = {
-        "Laboratory Result": "laboratory investigation",
-        "Radiology Result": "imaging study", 
-        "Discharge Summary": "hospital discharge",
-        "General Referral": "specialist referral",
-        "A&E Notification": "emergency department presentation",
-        "Outpatient Clinic Letter": "outpatient consultation"
-    }
-    
-    context = message_contexts.get(message_type, "medical consultation")
-    
-    prompt = f"""Generate realistic clinical notes for an Irish hospital HealthLink message.
-
-Context: {context}
-Patient: {age}-year-old {gender}
-{f"Known condition: {condition}" if condition else ""}
-{f"Specialty: {specialty}" if specialty else ""}
-
-Requirements:
-- Use appropriate Irish medical terminology and practices
-- Include relevant clinical observations appropriate to the context
-- Mention relevant Irish healthcare pathways if applicable (e.g., HSE guidelines)
-- Keep notes concise but clinically meaningful (2-3 sentences)
-- Use professional medical language suitable for inter-provider communication
-
-Clinical notes:"""
-
-    ai_result = call_azure_openai(prompt, max_tokens=150, temperature=0.7)
-    
-    # Return AI result or fallback
-    return ai_result if ai_result else generate_clinical_notes(patient_context, specialty)
-
-def generate_ai_enhanced_radiology_report(imaging_type, patient_context=None):
-    """Generate realistic radiology reports using Azure OpenAI"""
-    
-    if not azure_openai_client:
-        # Fallback to basic radiology report
-        return f"{imaging_type}: No acute abnormality detected. Normal study."
-    
-    patient_info = ""
-    if patient_context:
-        age = patient_context.get('age', 'unknown')
-        gender = patient_context.get('gender', 'unknown')
-        condition = patient_context.get('clinical_condition', '')
-        patient_info = f"Patient: {age}yo {gender}. "
-        if condition:
-            patient_info += f"Clinical history: {condition}. "
-    
-    prompt = f"""Generate a realistic {imaging_type} radiology report for an Irish hospital.
-{patient_info}
-
-Requirements:
-- Follow standard radiological reporting structure (Technique, Findings, Impression)
-- 90% chance of normal/minor findings, 10% chance of significant findings
-- Use appropriate medical terminology for Irish radiologists
-- Include relevant anatomical references
-- Keep report concise but professional (3-4 sentences)
-
-Report:"""
-
-    ai_result = call_azure_openai(prompt, max_tokens=200, temperature=0.6)
-    
-    return ai_result if ai_result else f"{imaging_type}: No acute abnormality detected. Normal study."
-
-def generate_ai_enhanced_referral_reason(specialty, patient_context=None):
-    """Generate realistic referral reasons using Azure OpenAI"""
-    
-    if not azure_openai_client:
-        # Fallback to existing referral reasons
-        if specialty in REFERRAL_REASONS:
-            return fake.random_element(elements=REFERRAL_REASONS[specialty])
-        return "For specialist assessment and management"
-    
-    patient_info = ""
-    if patient_context:
-        age = patient_context.get('age', 'unknown')
-        gender = patient_context.get('gender', 'unknown')
-        condition = patient_context.get('clinical_condition', '')
-        if condition:
-            patient_info = f"Patient has known {condition}. "
-    
-    prompt = f"""Generate a realistic referral reason for {specialty} specialty in an Irish hospital setting.
-{patient_info}
-
-Requirements:
-- Use appropriate medical terminology for Irish healthcare
-- Include specific clinical indication requiring specialist input
-- Be concise but clinically meaningful (1-2 sentences)
-- Reflect common referral patterns to {specialty}
-
-Referral reason:"""
-
-    ai_result = call_azure_openai(prompt, max_tokens=100, temperature=0.7)
-    
-    return ai_result if ai_result else f"For {specialty.lower()} assessment and management"
-
-def generate_ai_enhanced_diagnosis_text(patient_context, message_type):
-    """Generate realistic diagnosis or clinical summary text using Azure OpenAI"""
-    
-    if not azure_openai_client:
-        # Fallback to basic diagnosis
-        if patient_context.get('clinical_condition'):
-            return patient_context['clinical_condition']
-        return "Clinical assessment and management"
-    
-    age = patient_context.get('age', 50)
-    gender = patient_context.get('gender', 'M')
-    condition = patient_context.get('clinical_condition', '')
-    
-    prompt = f"""Generate a realistic clinical diagnosis or summary for an Irish hospital HealthLink message.
-
-Patient: {age}-year-old {gender}
-{f"Background: {condition}" if condition else ""}
-Message type: {message_type}
-
-Requirements:
-- Use ICD-10 appropriate terminology where relevant
-- Include appropriate clinical detail for inter-provider communication
-- Use Irish medical practice terminology
-- Be concise but clinically accurate (1-2 sentences)
-
-Clinical summary:"""
-
-    ai_result = call_azure_openai(prompt, max_tokens=120, temperature=0.6)
-    
-    return ai_result if ai_result else (condition if condition else "Clinical assessment and management")
-    
-# Azure OpenAI Configuration
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY") 
-AZURE_OPENAI_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-
-# Initialize Azure OpenAI client if available
-azure_openai_client = None
-if AZURE_OPENAI_AVAILABLE and AZURE_OPENAI_ENDPOINT and AzureOpenAI:
     try:
-        if AZURE_OPENAI_API_KEY:
-            azure_openai_client = AzureOpenAI(
-                api_key=AZURE_OPENAI_API_KEY,
-                api_version=AZURE_OPENAI_API_VERSION,
-                azure_endpoint=AZURE_OPENAI_ENDPOINT
-            )
+        # Extract patient info for context
+        patient_age = None
+        patient_gender = None
+        if patient_context:
+            birth_date = patient_context.get('birth_date', '')
+            if birth_date:
+                from datetime import datetime
+                try:
+                    birth_year = int(birth_date[:4])
+                    current_year = datetime.now().year
+                    patient_age = current_year - birth_year
+                except:
+                    pass
+            patient_gender = patient_context.get('gender', '')
+        
+        # Create context-aware prompt
+        prompt = f"""Generate a realistic medical laboratory result value for:
+Test: {test_name} (Code: {test_code})
+"""
+        if patient_age:
+            prompt += f"Patient Age: {patient_age} years\n"
+        if patient_gender:
+            prompt += f"Patient Gender: {patient_gender}\n"
+            
+        prompt += """
+Requirements:
+- Return only the numeric value with appropriate units
+- Use Irish/European medical standards
+- Make it clinically realistic
+- Keep it concise (max 20 characters)
+- If abnormal, make it slightly outside normal range
+- Common tests: CBC, Chemistry, Lipids, etc.
+
+Examples:
+- Hemoglobin: "13.2 g/dL"
+- Glucose: "5.4 mmol/L"
+- Cholesterol: "4.8 mmol/L"
+- Creatinine: "78 μmol/L"
+
+Result value only:"""
+
+        response = azure_openai_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            messages=[
+                {"role": "system", "content": "You are a medical laboratory system generating realistic Irish lab values. Return only the requested lab value with units."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=50,
+            temperature=0.7
+        )
+        
+        result = response.choices[0].message.content
+        if result:
+            result = result.strip()
         else:
-            # Use DefaultAzureCredential for managed identity
-            credential = DefaultAzureCredential()
-            azure_openai_client = AzureOpenAI(
-                azure_ad_token_provider=credential.get_token,
-                api_version=AZURE_OPENAI_API_VERSION,
-                azure_endpoint=AZURE_OPENAI_ENDPOINT
-            )
-        print("✓ Azure OpenAI client initialized successfully")
+            return generate_lab_result(test_code)
+        
+        # Clean and validate the result
+        if len(result) > 50 or not result:
+            return generate_lab_result(test_code)
+            
+        return result
+        
     except Exception as e:
-        print(f"Warning: Could not initialize Azure OpenAI client: {e}")
-        azure_openai_client = None
+        logging.warning(f"AI lab result generation failed: {e}")
+        # Fallback to simple generation
+        return generate_lab_result(test_code)
+
+# Enhanced AI generation functions for clinical content
+def generate_ai_enhanced_referral_reason(specialty, patient, clinical_condition=""):
+    """Generate AI-enhanced referral reason text appropriate for Irish healthcare"""
+    if not azure_openai_client:
+        # Fallback to basic reasons if no AI available
+        fallback_reasons = {
+            "CARDIOLOGY": "Chest pain and abnormal ECG findings requiring specialist assessment",
+            "NEUROLOGY": "Neurological symptoms requiring specialist evaluation",
+            "ONCOLOGY": "Abnormal screening results requiring urgent specialist review",
+            "ORTHOPAEDICS": "Joint pain and mobility issues requiring orthopedic assessment",
+            "GASTROENTEROLOGY": "Gastrointestinal symptoms requiring specialist investigation",
+            "RESPIRATORY": "Respiratory symptoms and abnormal chest imaging",
+            "ENDOCRINOLOGY": "Diabetes management and endocrine disorder assessment",
+            "RADIOLOGY": "Clinical indication for advanced imaging studies",
+            "DERMATOLOGY": "Skin lesion requiring dermatological evaluation",
+            "OPHTHALMOLOGY": "Visual symptoms requiring ophthalmologic assessment",
+            "ENT": "ENT symptoms requiring specialist evaluation",
+            "UROLOGY": "Urological symptoms requiring specialist assessment",
+            "GYNAECOLOGY": "Gynecological symptoms requiring specialist evaluation"
+        }
+        return fallback_reasons.get(specialty, "Clinical assessment required")
+    
+    try:
+        # Create specialty-specific prompt for Irish healthcare context
+        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
+        gender = "Male" if patient.get("gender") == "M" else "Female"
+        
+        prompt = f"""Generate a realistic referral reason for an Irish hospital referral to {specialty.replace('_', ' ').title()}.
+
+Patient context:
+- Age: {age}
+- Gender: {gender}
+- Clinical condition: {clinical_condition or 'General assessment required'}
+
+Requirements:
+- Use professional Irish medical terminology
+- Include relevant clinical history (2-3 sentences)
+- Specify investigation results if appropriate
+- Use Irish healthcare system context (GP referral to consultant)
+- Be specific about the clinical indication
+- Maximum 150 words
+- Professional medical tone
+
+Example format: "6-month history of [symptoms]. [Investigation findings]. Requesting [specific assessment/management]."
+"""
+
+        response = azure_openai_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        content = response.choices[0].message.content
+        return content.strip() if content else "Clinical assessment required"
+        
+    except Exception as e:
+        print(f"Error generating AI referral reason: {e}")
+        # Fallback to basic reason
+        fallback_reasons = {
+            "CARDIOLOGY": "Chest pain and abnormal ECG findings requiring specialist assessment",
+            "NEUROLOGY": "Neurological symptoms requiring specialist evaluation", 
+            "ONCOLOGY": "Abnormal screening results requiring urgent specialist review"
+        }
+        return fallback_reasons.get(specialty, "Clinical assessment required")
+
+def generate_ai_enhanced_radiology_report(exam_type, patient):
+    """Generate AI-enhanced radiology report for Irish healthcare"""
+    if not azure_openai_client:
+        # Fallback reports
+        fallback_reports = {
+            "CHEST": "CHEST X-RAY: Heart size normal. Lung fields clear. No acute abnormality.",
+            "CT": "CT SCAN: No acute abnormality detected. Normal study.",
+            "MRI": "MRI: No significant abnormality identified.",
+            "US": "ULTRASOUND: Normal sonographic appearances."
+        }
+        return fallback_reports.get(exam_type, "IMAGING: Normal study.")
+    
+    try:
+        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
+        gender = "Male" if patient.get("gender") == "M" else "Female"
+        
+        prompt = f"""Generate a realistic radiology report for Irish healthcare.
+
+Exam details:
+- Type: {exam_type} examination
+- Patient: {age}-year-old {gender}
+
+Requirements:
+- Use standard Irish radiology report structure
+- Include TECHNIQUE, FINDINGS, and IMPRESSION sections
+- Use appropriate medical terminology
+- Include normal anatomical references
+- Make findings age-appropriate
+- Professional radiologist language
+- 100-200 words maximum
+- Irish hospital context
+
+Generate a report that could be normal or show minor age-related changes."""
+
+        response = azure_openai_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=250,
+            temperature=0.7
+        )
+        
+        content = response.choices[0].message.content
+        return content.strip() if content else "IMAGING: Normal study within expected parameters for patient age."
+        
+    except Exception as e:
+        print(f"Error generating AI radiology report: {e}")
+        return "IMAGING: Normal study within expected parameters for patient age."
+
+def generate_ai_enhanced_clinical_notes(note_type, patient, clinical_context=""):
+    """Generate AI-enhanced clinical notes for various message types"""
+    if not azure_openai_client:
+        fallback_notes = {
+            "DISCHARGE": "Patient stable for discharge. Follow-up as arranged.",
+            "CLINICAL": "Clinical assessment completed. Management plan discussed.",
+            "FOLLOWUP": "Routine follow-up appointment scheduled.",
+            "ADMISSION": "Patient admitted for further assessment and management."
+        }
+        return fallback_notes.get(note_type, "Clinical note documented.")
+    
+    try:
+        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
+        gender = "Male" if patient.get("gender") == "M" else "Female"
+        
+        prompt = f"""Generate clinical notes for Irish healthcare documentation.
+
+Context:
+- Note type: {note_type}
+- Patient: {age}-year-old {gender}
+- Clinical context: {clinical_context}
+
+Requirements:
+- Professional Irish medical language
+- Appropriate for inter-professional communication
+- Include relevant clinical details
+- Use Irish healthcare terminology
+- 50-100 words
+- Clear and concise
+- Professional tone suitable for medical records
+
+Generate realistic clinical documentation."""
+
+        response = azure_openai_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+            temperature=0.7
+        )
+        
+        content = response.choices[0].message.content
+        return content.strip() if content else "Clinical documentation completed as per standard protocols."
+        
+    except Exception as e:
+        print(f"Error generating AI clinical notes: {e}")
+        return "Clinical documentation completed as per standard protocols."
+
+def generate_ai_enhanced_discharge_summary(patient, admission_reason="", hospital_course=""):
+    """Generate AI-enhanced discharge summary for Irish healthcare"""
+    if not azure_openai_client:
+        return "Patient admitted for assessment. Treatment provided as indicated. Discharged in stable condition with appropriate follow-up arranged."
+    
+    try:
+        age = 2025 - int(patient.get("dob", "19800101")[:4]) if patient.get("dob") else 45
+        gender = "Male" if patient.get("gender") == "M" else "Female"
+        
+        prompt = f"""Generate a discharge summary for Irish hospital.
+
+Patient details:
+- Age: {age}
+- Gender: {gender}
+- Admission reason: {admission_reason or 'Medical assessment'}
+- Hospital course: {hospital_course or 'Routine care provided'}
+
+Requirements:
+- Standard Irish discharge summary format
+- Include admission reason, hospital course, discharge condition
+- Mention follow-up arrangements
+- Professional medical language
+- 100-150 words
+- Appropriate for GP communication
+- Irish healthcare context
+
+Generate realistic discharge documentation."""
+
+        response = azure_openai_client.chat.completions.create(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=200,
+            temperature=0.7
+        )
+        
+        content = response.choices[0].message.content
+        return content.strip() if content else "Patient discharged in stable condition. Follow-up care arranged with primary care provider."
+        
+    except Exception as e:
+        print(f"Error generating AI discharge summary: {e}")
+        return "Patient discharged in stable condition. Follow-up care arranged with primary care provider."
