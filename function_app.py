@@ -1266,6 +1266,7 @@ Requirements:
 - Keep it concise (max 20 characters)
 - If abnormal, make it slightly outside normal range
 - Common tests: CBC, Chemistry, Lipids, etc.
+- IMPORTANT: Respond in English language only, never in Irish Gaelic
 
 Examples:
 - Hemoglobin: "13.2 g/dL"
@@ -1278,7 +1279,7 @@ Result value only:"""
         response = azure_openai_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
             messages=[
-                {"role": "system", "content": "You are a medical laboratory system generating realistic Irish lab values. Return only the requested lab value with units."},
+                {"role": "system", "content": "You are a medical laboratory system generating realistic Irish lab values. Return only the requested lab value with units. IMPORTANT: Respond only in English language, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
             ],
             max_tokens=50,
@@ -1344,13 +1345,17 @@ Requirements:
 - Be specific about the clinical indication
 - Maximum 150 words
 - Professional medical tone
+- IMPORTANT: Write in English language only, never in Irish Gaelic
 
 Example format: "6-month history of [symptoms]. [Investigation findings]. Requesting [specific assessment/management]."
 """
 
         response = azure_openai_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a medical professional generating clinical content for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=200,
             temperature=0.7
         )
@@ -1399,12 +1404,16 @@ Requirements:
 - Professional radiologist language
 - 100-200 words maximum
 - Irish hospital context
+- IMPORTANT: Write in English language only, never in Irish Gaelic
 
 Generate a report that could be normal or show minor age-related changes."""
 
         response = azure_openai_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a radiologist generating medical reports for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=250,
             temperature=0.7
         )
@@ -1446,12 +1455,16 @@ Requirements:
 - 50-100 words
 - Clear and concise
 - Professional tone suitable for medical records
+- IMPORTANT: Write in English language only, never in Irish Gaelic
 
 Generate realistic clinical documentation."""
 
         response = azure_openai_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a healthcare professional generating clinical documentation for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=150,
             temperature=0.7
         )
@@ -1488,12 +1501,16 @@ Requirements:
 - 100-150 words
 - Appropriate for GP communication
 - Irish healthcare context
+- IMPORTANT: Write in English language only, never in Irish Gaelic
 
 Generate realistic discharge documentation."""
 
         response = azure_openai_client.chat.completions.create(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a healthcare professional generating discharge summaries for Irish hospitals. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=200,
             temperature=0.7
         )
