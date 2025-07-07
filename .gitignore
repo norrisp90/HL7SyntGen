@@ -210,3 +210,6 @@ __marimo__/
 # Message samples and specifications - typically contain test/sample data
 Message Samples/
 Spec/
+
+# Azure Functions local settings (may contain sensitive data)
+local.settings.json

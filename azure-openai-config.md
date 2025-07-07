@@ -1,21 +1,25 @@
 # Azure OpenAI Configuration for HealthLink HL7 Message Generator
+
+⚠️ **SECURITY WARNING**: Never commit real API keys to version control!
+This file contains example values only. Use environment variables or Azure Key Vault for actual credentials.
+
 # 
 # To enable AI-enhanced content generation, set these environment variables:
 
 # Required: Your Azure OpenAI endpoint URL
-AZURE_OPENAI_ENDPOINT=https://healthlinksynapi-openai-bac3.openai.azure.com/
+AZURE_OPENAI_ENDPOINT=https://your-openai-instance.openai.azure.com/
 
 # Option 1: Use API Key authentication
-AZURE_OPENAI_API_KEY=0eadf1d3b05b4d828b403894224c298d
+AZURE_OPENAI_API_KEY=your-api-key-here
 
 # Option 2: Use Managed Identity (recommended for production)
 # Leave AZURE_OPENAI_API_KEY empty to use DefaultAzureCredential
 
 # Your deployed model name (e.g., gpt-4, gpt-35-turbo)
-AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
+AZURE_OPENAI_DEPLOYMENT=gpt-4
 
 # API Version (use latest stable version)
-AZURE_OPENAI_API_VERSION=2025-01-01-preview
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
 
 # Example local.settings.json for Azure Functions:
 # {
