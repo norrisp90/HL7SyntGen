@@ -37,8 +37,15 @@ jobs:
       - name: Install dependencies
         run: |
           source venv/bin/activate
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt --verbose
+          
+          # Validate installed packages
+          echo "Validating installed packages..."
+          pip list
+          python -c "import azure.functions; print('✓ Azure Functions imported successfully')"
+          python -c "import faker; print('✓ Faker imported successfully')"
+          python -c "import openai; print('✓ OpenAI imported successfully')"
           
           # Validate function app structure
           echo "Validating Function App structure..."

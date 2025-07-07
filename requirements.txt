@@ -1,16 +1,16 @@
-# Azure Functions - use latest compatible version
-azure-functions>=1.20.0,<2.0.0
-azure-functions-worker>=1.0.0,<2.0.0
+# Azure Functions - tested compatible versions
+azure-functions>=1.20.0
+azure-functions-worker
 
-# Data Generation - for creating realistic Irish patient data
-faker>=22.0.0,<23.0.0
+# Data Generation - for creating realistic Irish patient data  
+faker>=19.0.0
 
 # Date/time handling
-python-dateutil>=2.8.2,<3.0.0
+python-dateutil>=2.8.0
 
 # Azure OpenAI for AI-enhanced content generation
-openai>=1.12.0,<2.0.0
-azure-identity>=1.15.0,<2.0.0
+openai>=1.0.0
+azure-identity>=1.20.0
 
-# XML processing (explicitly declare even though part of stdlib for clarity)
-lxml>=4.9.0,<5.0.0
+# Core Azure packages
+azure-core>=1.30.0
