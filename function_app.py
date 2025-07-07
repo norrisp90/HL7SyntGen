@@ -7,18 +7,13 @@ import random
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import os
-from azure.identity import DefaultAzureCredential
 
-# Try to import Azure OpenAI
-try:
-    from openai import AzureOpenAI
-    AZURE_OPENAI_AVAILABLE = True
-except ImportError:
-    AZURE_OPENAI_AVAILABLE = False
-    AzureOpenAI = None
-    print("Warning: Azure OpenAI not available. Install with: pip install openai")
-import os
-from azure.identity import DefaultAzureCredential
+# Initialize Function App first - critical for Azure Functions v2 discovery
+app = func.FunctionApp()
+
+# Temporarily disable Azure OpenAI to isolate function discovery issue
+AZURE_OPENAI_AVAILABLE = False
+AzureOpenAI = None
 
 # Initialize Faker for Irish locale
 fake = Faker(['en_IE'])
@@ -223,8 +218,6 @@ IRISH_CONSULTANTS = [
     {"name": "Dr. Raj Sharma", "specialty": "OPHTHALMOLOGY", "mcn": "234580.1234"},
     {"name": "Dr. Elena Popescu", "specialty": "DERMATOLOGY", "mcn": "234581.1234"}
 ]
-
-app = func.FunctionApp()
 
 # Initialize Azure OpenAI client
 azure_openai_client = None
