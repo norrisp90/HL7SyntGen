@@ -1,6 +1,5 @@
 # Azure Functions - tested compatible versions
 azure-functions>=1.20.0
-azure-functions-worker
 
 # Data Generation - for creating realistic Irish patient data  
 faker>=19.0.0
