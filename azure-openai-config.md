@@ -16,10 +16,10 @@ AZURE_OPENAI_API_KEY=your-api-key-here
 # Leave AZURE_OPENAI_API_KEY empty to use DefaultAzureCredential
 
 # Your deployed model name (e.g., gpt-4, gpt-35-turbo)
-AZURE_OPENAI_DEPLOYMENT=gpt-4
+AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
 
 # API Version (use latest stable version)
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
 
 # Example local.settings.json for Azure Functions:
 # {
