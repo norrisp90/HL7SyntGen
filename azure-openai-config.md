@@ -15,7 +15,7 @@ AZURE_OPENAI_API_KEY=0eadf1d3b05b4d828b403894224c298d
 AZURE_OPENAI_DEPLOYMENT=gpt-4.1-mini
 
 # API Version (use latest stable version)
-AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_API_VERSION=2025-01-01-preview
 
 # Example local.settings.json for Azure Functions:
 # {

@@ -891,6 +891,19 @@ def generate_urinalysis_results():
 
 # Legacy format function - replaced by format_as_healthlink_compliant_xml
 
+@app.route(route="health", methods=["GET"])
+def health_check(req: func.HttpRequest) -> func.HttpResponse:
+    """Simple health check endpoint"""
+    return func.HttpResponse(
+        json.dumps({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "message": "HL7 SyntGen API is running"
+        }),
+        status_code=200,
+        headers={"Content-Type": "application/json"}
+    )
+
 @app.route(route="generate", methods=["GET"])
 def generate_random_message(req: func.HttpRequest) -> func.HttpResponse:
     """Generate a random HealthLink message with full spec compliance"""
@@ -1190,7 +1203,7 @@ def generate_ai_enhanced_clinical_notes(patient_context, message_type, specialty
         return generate_clinical_notes(patient_context, specialty)
     
     # Build comprehensive context
-    age = patient_context.get('age', 50)
+    age = patient_context.get('age',  50)
     gender = patient_context.get('gender', 'M')
     condition = patient_context.get('clinical_condition', '')
     
