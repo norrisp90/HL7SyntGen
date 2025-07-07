@@ -1277,7 +1277,7 @@ Examples:
 Result value only:"""
 
         response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
             messages=[
                 {"role": "system", "content": "You are a medical laboratory system generating realistic Irish lab values. Return only the requested lab value with units. IMPORTANT: Respond only in English language, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
@@ -1351,7 +1351,7 @@ Example format: "6-month history of [symptoms]. [Investigation findings]. Reques
 """
 
         response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
             messages=[
                 {"role": "system", "content": "You are a medical professional generating clinical content for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
@@ -1409,7 +1409,7 @@ Requirements:
 Generate a report that could be normal or show minor age-related changes."""
 
         response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
             messages=[
                 {"role": "system", "content": "You are a radiologist generating medical reports for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
@@ -1460,7 +1460,7 @@ Requirements:
 Generate realistic clinical documentation."""
 
         response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
             messages=[
                 {"role": "system", "content": "You are a healthcare professional generating clinical documentation for Irish healthcare. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
@@ -1506,7 +1506,7 @@ Requirements:
 Generate realistic discharge documentation."""
 
         response = azure_openai_client.chat.completions.create(
-            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
             messages=[
                 {"role": "system", "content": "You are a healthcare professional generating discharge summaries for Irish hospitals. IMPORTANT: Always respond in English language only, never in Irish Gaelic."},
                 {"role": "user", "content": prompt}
