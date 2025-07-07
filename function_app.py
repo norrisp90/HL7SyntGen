@@ -2,7 +2,6 @@ import logging
 import json
 import azure.functions as func
 from datetime import datetime, timedelta
-from faker import Faker
 import random
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
@@ -13,43 +12,45 @@ import sys
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Function App first - critical for Azure Functions v2 discovery
-app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
-# Log function app initialization for debugging
-logger.info("Function App initialized successfully")
-
 # Log startup information for debugging in Azure
 logger.info("=== Azure Functions App Starting ===")
 logger.info(f"Python version: {sys.version}")
 logger.info(f"Working directory: {os.getcwd()}")
-logger.info(f"Azure Functions version: {func.__version__ if hasattr(func, '__version__') else 'unknown'}")
+logger.info(f"Python path: {sys.path[:3]}")
 
-# Temporarily disable Azure OpenAI to isolate function discovery issue
-AZURE_OPENAI_AVAILABLE = False
-AzureOpenAI = None
-
-# Initialize Faker for Irish locale
-fake = Faker(['en_IE'])
-
-# Ensure all required modules are available at startup
-try:
-    import azure.functions
-    logger.info(f"✓ Azure Functions module loaded: {azure.functions.__version__ if hasattr(azure.functions, '__version__') else 'version unknown'}")
-except ImportError as e:
-    logger.error(f"✗ Failed to import azure.functions: {e}")
-
+# Try to import faker with detailed error reporting
 try:
     from faker import Faker
-    logger.info("✓ Faker module loaded")
+    fake = Faker(['en_IE'])
+    logger.info("✓ Faker module imported successfully")
+    # Get Faker version safely - use faker instance, not class
+    try:
+        faker_version = getattr(fake, '__version__', 'unknown')
+    except:
+        faker_version = 'unknown'
+    logger.info(f"Faker version: {faker_version}")
+    FAKER_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"✗ Failed to import Faker: {e}")
+    logger.error(f"✗ CRITICAL: Failed to import Faker: {e}")
+    logger.error(f"Current working directory: {os.getcwd()}")
+    logger.error(f"Contents of current directory: {os.listdir('.')}")
+    logger.error("Check if requirements.txt was processed during deployment")
+    # This will cause the function to fail, which is what we want for debugging
+    raise ImportError(f"Faker module is required but not available: {e}")
 
+# Import other modules
 try:
-    import xml.etree.ElementTree as ET
-    logger.info("✓ XML processing modules loaded")
+    from openai import AzureOpenAI
+    AZURE_OPENAI_AVAILABLE = True
+    logger.info("✓ Azure OpenAI module loaded")
 except ImportError as e:
-    logger.error(f"✗ Failed to import XML modules: {e}")
+    logger.warning(f"Azure OpenAI not available: {e}")
+    AzureOpenAI = None
+    AZURE_OPENAI_AVAILABLE = False
+
+# Initialize Function App
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+logger.info("Function App initialized successfully")
 
 # HealthLink message types mapping (corrected based on real spec analysis)
 HEALTHLINK_MESSAGES = {
@@ -272,6 +273,44 @@ except Exception as e:
     print(f"ERROR: Could not initialize Azure OpenAI client: {str(e)}")
     azure_openai_client = None
 
+def safe_faker_call(method_name, *args, **kwargs):
+    """Safely call faker methods with fallback values when faker is not available"""
+    if not FAKER_AVAILABLE or fake is None:
+        # Provide fallback values when faker is not available
+        fallbacks = {
+            'random_element': lambda elements: random.choice(elements) if elements else "DefaultValue",
+            'random_int': lambda min=1, max=100: random.randint(min, max),
+            'city': lambda: "Dublin",
+            'date_of_birth': lambda minimum_age=18, maximum_age=90: datetime.now() - timedelta(days=random.randint(minimum_age*365, maximum_age*365))
+        }
+        if method_name in fallbacks:
+            return fallbacks[method_name](*args, **kwargs)
+        else:
+            logger.warning(f"Faker method '{method_name}' not available, returning default")
+            return "DefaultValue"
+    
+    # Use faker if available
+    method = getattr(fake, method_name, None)
+    if method:
+        return method(*args, **kwargs)
+    else:
+        logger.warning(f"Faker method '{method_name}' not found")
+        return "DefaultValue"
+
+def format_date_of_birth():
+    """Generate and format date of birth safely"""
+    if FAKER_AVAILABLE:
+        # Use faker to generate date of birth
+        dob_result = safe_faker_call('date_of_birth', minimum_age=18, maximum_age=90)
+        
+        # Check if we got a valid date object (not a string fallback)
+        if not isinstance(dob_result, str) and hasattr(dob_result, 'strftime'):
+            return dob_result.strftime("%Y%m%d")
+    
+    # Fallback to manual generation (when faker not available or returns string)
+    days_ago = random.randint(18*365, 90*365)
+    return (datetime.now() - timedelta(days=days_ago)).strftime("%Y%m%d")
+
 def generate_patient_data():
     """Generate synthetic Irish patient data with realistic HealthLink values"""
     # Generate Irish-specific data based on samples
@@ -280,53 +319,62 @@ def generate_patient_data():
         "Clare", "Kerry", "Mayo", "Donegal", "Wexford", "Tipperary", "Sligo"
     ]
     
-    gender = fake.random_element(elements=["M", "F"])
+    gender = safe_faker_call('random_element', elements=["M", "F"])
     
     if gender == "M":
-        first_name = fake.random_element(elements=IRISH_PATIENT_DATA["first_names_male"])
+        first_name = safe_faker_call('random_element', elements=IRISH_PATIENT_DATA["first_names_male"])
     else:
-        first_name = fake.random_element(elements=IRISH_PATIENT_DATA["first_names_female"])
+        first_name = safe_faker_call('random_element', elements=IRISH_PATIENT_DATA["first_names_female"])
         
-    last_name = fake.random_element(elements=IRISH_PATIENT_DATA["surnames"])
+    last_name = safe_faker_call('random_element', elements=IRISH_PATIENT_DATA["surnames"])
     
     # Generate realistic Medical Record Numbers like samples show (e.g., M3, M123456)
-    mrn_prefix = fake.random_element(elements=["M", "P", "H"])
-    mrn_number = fake.random_int(min=1, max=999999)
+    mrn_prefix = safe_faker_call('random_element', elements=["M", "P", "H"])
+    mrn_number = safe_faker_call('random_int', min=1, max=999999)
     mrn = f"{mrn_prefix}{mrn_number}"
     
     # Generate realistic Eircode format
     eircode_areas = ["D01", "D02", "D03", "D04", "D05", "D06", "D07", "D08", "T12", "T23", "A94", "H91", "V92", "P85", "Y35", "F91", "N91"]
-    eircode = f"{fake.random_element(elements=eircode_areas)}{fake.random_element(elements=['P','T','K','R','X','W','E'])}{fake.random_element(elements=['W','E','R','T','Y','A','S','D'])}{fake.random_int(min=10,max=99)}"
+    eircode = f"{safe_faker_call('random_element', elements=eircode_areas)}{safe_faker_call('random_element', elements=['P','T','K','R','X','W','E'])}{safe_faker_call('random_element', elements=['W','E','R','T','Y','A','S','D'])}{safe_faker_call('random_int', min=10, max=99)}"
     
-    address_line1 = fake.random_element(elements=IRISH_PATIENT_DATA["addresses"]["Dublin"])
-    address_line2 = fake.city()
-    county = fake.random_element(elements=irish_counties)
+    address_line1 = safe_faker_call('random_element', elements=IRISH_PATIENT_DATA["addresses"]["Dublin"])
+    address_line2 = safe_faker_call('city')
+    county = safe_faker_call('random_element', elements=irish_counties)
     
     # Randomly assign a clinical condition based on prevalence
-    clinical_condition = fake.random_element(elements=IRISH_MEDICAL_CONDITIONS)
-    has_clinical_condition = fake.random_int(min=0, max=100) < (clinical_condition["prevalence"] * 100)
-    clinical_condition_code = clinical_condition["icd10"] if has_clinical_condition else ""
+    clinical_condition = safe_faker_call('random_element', elements=IRISH_MEDICAL_CONDITIONS)
+    
+    # Safely handle clinical condition data
+    if isinstance(clinical_condition, dict) and "prevalence" in clinical_condition:
+        has_clinical_condition = safe_faker_call('random_int', min=0, max=100) < (clinical_condition["prevalence"] * 100)
+        clinical_condition_code = clinical_condition.get("icd10", "") if has_clinical_condition else ""
+        clinical_condition_name = clinical_condition.get("condition", "") if has_clinical_condition else ""
+    else:
+        # Fallback when faker returns "DefaultValue" or unexpected format
+        has_clinical_condition = False
+        clinical_condition_code = ""
+        clinical_condition_name = ""
     
     return {
-        "id": fake.random_int(min=100000, max=999999),
+        "id": safe_faker_call('random_int', min=100000, max=999999),
         "mrn": mrn,
-        "pps": f"{fake.random_int(min=100000, max=999999)}{fake.random_int(min=10, max=99)}{fake.random_element(elements=['A','B','C','D','E','F','G','H','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z'])}",  # Irish PPS format
+        "pps": f"{safe_faker_call('random_int', min=100000, max=999999)}{safe_faker_call('random_int', min=10, max=99)}{safe_faker_call('random_element', elements=['A','B','C','D','E','F','G','H','J','K','L','M','N','P','Q','R','S','T','U','V','W','X','Y','Z'])}",  # Irish PPS format
         "first_name": first_name,
         "last_name": last_name,
-        "dob": fake.date_of_birth(minimum_age=18, maximum_age=90).strftime("%Y%m%d"),
+        "dob": format_date_of_birth(),
         "gender": gender,
         "address_line1": address_line1,
         "address_line2": address_line2,
         "county": county,
         "eircode": eircode,
-        "phone": f"0{fake.random_int(min=21,max=99)} {fake.random_int(min=400, max=999)}{fake.random_int(min=1000, max=9999)}",  # Irish landline format
-        "mobile": f"087 {fake.random_int(min=100, max=999)}{fake.random_int(min=1000, max=9999)}",  # Irish mobile format
-        "nhi": f"IE{fake.random_int(min=100000, max=999999)}{fake.random_int(min=100, max=999)}",  # Irish Health Identifier
+        "phone": f"0{safe_faker_call('random_int', min=21, max=99)} {safe_faker_call('random_int', min=400, max=999)}{safe_faker_call('random_int', min=1000, max=9999)}",  # Irish landline format
+        "mobile": f"087 {safe_faker_call('random_int', min=100, max=999)}{safe_faker_call('random_int', min=1000, max=9999)}",  # Irish mobile format
+        "nhi": f"IE{safe_faker_call('random_int', min=100000, max=999999)}{safe_faker_call('random_int', min=100, max=999)}",  # Irish Health Identifier
         "full_name": f"{last_name.upper()},{first_name.upper()}",
-        "clinical_condition": clinical_condition["condition"] if has_clinical_condition else "",
+        "clinical_condition": clinical_condition_name,
         "clinical_condition_code": clinical_condition_code,
-        "age": fake.random_int(min=18, max=90),
-        "gp_practice": fake.random_element(elements=IRISH_GP_PRACTICES)
+        "age": safe_faker_call('random_int', min=18, max=90),
+        "gp_practice": safe_faker_call('random_element', elements=IRISH_GP_PRACTICES)
     }
 
 def generate_doctor_data():

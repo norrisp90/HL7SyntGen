@@ -33,19 +33,33 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
+          echo "Virtual environment created and activated"
+          echo "Python path: $(which python)"
+          echo "Pip path: $(which pip)"
 
       - name: Install dependencies
         run: |
           source venv/bin/activate
           python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt --verbose
+          
+          # Install requirements with detailed logging
+          echo "Installing packages from requirements.txt..."
+          pip install -r requirements.txt --verbose --no-cache-dir
           
           # Validate installed packages
-          echo "Validating installed packages..."
+          echo "=== Validating installed packages ==="
           pip list
+          
+          echo "=== Testing critical imports ==="
+          python -c "import sys; print('Python version:', sys.version)"
           python -c "import azure.functions; print('✓ Azure Functions imported successfully')"
-          python -c "import faker; print('✓ Faker imported successfully')"
+          python -c "import faker; fake = faker.Faker(); print('✓ Faker imported successfully, test:', fake.name())"
           python -c "import openai; print('✓ OpenAI imported successfully')"
+          
+          # Test function app import
+          echo "=== Testing Function App Import ==="
+          python -c "import function_app; print('✓ Function app imported successfully')"
+          python -c "import function_app; patient = function_app.generate_patient_data(); print('✓ Patient data generation works')"
           
           # Validate function app structure
           echo "Validating Function App structure..."
@@ -59,11 +73,15 @@ jobs:
           
       - name: Archive production artifacts
         run: |
+          # Deactivate virtual environment before archiving
+          deactivate 2>/dev/null || true
+          
           # Ensure all required files are present
           echo "Files before archiving:"
           ls -la
           
           # Create archive excluding development files but including ALL required runtime files
+          # Note: Virtual environment is excluded because Azure Flex Consumption uses Oryx remote build
           zip -r release.zip . -x \
             "venv/*" \
             ".git/*" \
@@ -78,9 +96,9 @@ jobs:
             ".DS_Store" \
             "*.log"
             
-          # Verify archive contents
+          # Verify archive contents include critical files
           echo "Archive contents:"
-          unzip -l release.zip
+          unzip -l release.zip | grep -E "(function_app.py|host.json|requirements.txt|runtime.txt)" || echo "Warning: Some critical files may be missing"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -131,6 +149,9 @@ jobs:
           app-name: 'synhelathlinkapi'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          # Enable Oryx remote build for Flex Consumption plan
           scm-do-build-during-deployment: true
           enable-oryx-build: true
+          # Force remote build to ensure proper package installation
+          publish-profile: ''
           
