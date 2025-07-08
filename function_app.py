@@ -8,15 +8,14 @@ from xml.dom import minidom
 import os
 import sys
 
-# Configure logging for better debugging in Azure
+# Configure logging following latest Azure Functions template
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Log startup information for debugging in Azure
-logger.info("=== Azure Functions App Starting ===")
+# Function app startup logging
+logger.info("Azure Functions Python v2 app starting up")
 logger.info(f"Python version: {sys.version}")
 logger.info(f"Working directory: {os.getcwd()}")
-logger.info(f"Python path: {sys.path[:3]}")
 
 # Try to import faker with detailed error reporting
 try:
@@ -31,12 +30,10 @@ try:
     logger.info(f"Faker version: {faker_version}")
     FAKER_AVAILABLE = True
 except ImportError as e:
-    logger.error(f"✗ CRITICAL: Failed to import Faker: {e}")
-    logger.error(f"Current working directory: {os.getcwd()}")
-    logger.error(f"Contents of current directory: {os.listdir('.')}")
-    logger.error("Check if requirements.txt was processed during deployment")
-    # This will cause the function to fail, which is what we want for debugging
-    raise ImportError(f"Faker module is required but not available: {e}")
+    logger.warning(f"⚠ Faker module not available: {e}")
+    logger.warning("Function will use fallback data generation methods")
+    fake = None
+    FAKER_AVAILABLE = False
 
 # Import other modules
 try:
@@ -48,7 +45,7 @@ except ImportError as e:
     AzureOpenAI = None
     AZURE_OPENAI_AVAILABLE = False
 
-# Initialize Function App
+# Initialize Function App - using the latest template approach
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 logger.info("Function App initialized successfully")
 
@@ -280,6 +277,7 @@ def safe_faker_call(method_name, *args, **kwargs):
         fallbacks = {
             'random_element': lambda elements: random.choice(elements) if elements else "DefaultValue",
             'random_int': lambda min=1, max=100: random.randint(min, max),
+            'pyfloat': lambda left_digits=1, right_digits=1, min_value=0.0, max_value=100.0, **kw: round(random.uniform(min_value, max_value), right_digits),
             'city': lambda: "Dublin",
             'date_of_birth': lambda minimum_age=18, maximum_age=90: datetime.now() - timedelta(days=random.randint(minimum_age*365, maximum_age*365))
         }
@@ -380,25 +378,38 @@ def generate_patient_data():
 def generate_doctor_data():
     """Generate synthetic Irish doctor data matching HealthLink samples"""
     # Use realistic consultant data
-    consultant = fake.random_element(elements=IRISH_CONSULTANTS)
+    consultant = safe_faker_call('random_element', elements=IRISH_CONSULTANTS)
+    
+    # Handle consultant data safely
+    if isinstance(consultant, dict):
+        consultant_name = consultant.get("name", "Dr. Default Doctor")
+        consultant_specialty = consultant.get("specialty", "GENERAL_MEDICINE")
+    else:
+        # Fallback when faker returns "DefaultValue"
+        consultant_name = "Dr. Default Doctor"
+        consultant_specialty = "GENERAL_MEDICINE"
     
     # Generate Medical Council Number in format like samples: 123456.4444 or 10002.1234
-    mcn_main = fake.random_int(min=10000, max=999999)
-    mcn_suffix = fake.random_int(min=1000, max=9999)
+    mcn_main = safe_faker_call('random_int', min=10000, max=999999)
+    mcn_suffix = safe_faker_call('random_int', min=1000, max=9999)
     
     # Format name like samples: "Dr Smith,David" or "DR Test Doc"
     name_formats = [
-        consultant["name"].replace("Dr. ", "Dr "),  # "Dr Name,Surname" 
-        consultant["name"].replace("Dr. ", "DR ").upper(),  # "DR NAME SURNAME"
-        consultant["name"].replace("Dr. ", "").replace(" ", ",")  # "SURNAME,NAME"
+        consultant_name.replace("Dr. ", "Dr "),  # "Dr Name,Surname" 
+        consultant_name.replace("Dr. ", "DR ").upper(),  # "DR NAME SURNAME"
+        consultant_name.replace("Dr. ", "").replace(" ", ",")  # "SURNAME,NAME"
     ]
     
+    # Get hospital affiliation safely
+    hospital = safe_faker_call('random_element', elements=IRISH_HOSPITALS)
+    hospital_name = hospital.get("name", "Default Hospital") if isinstance(hospital, dict) else "Default Hospital"
+    
     return {
-        "name": fake.random_element(elements=name_formats),
+        "name": safe_faker_call('random_element', elements=name_formats),
         "mcn": f"{mcn_main}.{mcn_suffix}",
         "practice_id": "MCN.HLPracticeID",  # Matches samples exactly
-        "specialty": consultant["specialty"],
-        "hospital_affiliation": fake.random_element(elements=IRISH_HOSPITALS)["name"]
+        "specialty": consultant_specialty,
+        "hospital_affiliation": hospital_name
     }
 
 def generate_lab_result(test_code):
@@ -428,56 +439,59 @@ def generate_lab_result(test_code):
 
 def generate_fbc_results():
     """Generate Full Blood Count results"""
-    return f"""Haemoglobin: {fake.random_int(min=120, max=160)} g/L (120-160)
-White Cell Count: {fake.pyfloat(left_digits=1, right_digits=1, min_value=4.0, max_value=11.0)} x10^9/L (4.0-11.0)
-Platelets: {fake.random_int(min=150, max=400)} x10^9/L (150-400)
-Neutrophils: {fake.pyfloat(left_digits=1, right_digits=1, min_value=2.0, max_value=7.5)} x10^9/L (2.0-7.5)"""
+    return f"""Haemoglobin: {safe_faker_call('random_int', min=120, max=160)} g/L (120-160)
+White Cell Count: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=4.0, max_value=11.0)} x10^9/L (4.0-11.0)
+Platelets: {safe_faker_call('random_int', min=150, max=400)} x10^9/L (150-400)
+Neutrophils: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=2.0, max_value=7.5)} x10^9/L (2.0-7.5)"""
 
 def generate_ue_results():
     """Generate Urea and Electrolytes results"""
-    return f"""Sodium: {fake.random_int(min=136, max=145)} mmol/L (136-145)
-Potassium: {fake.pyfloat(left_digits=1, right_digits=1, min_value=3.5, max_value=5.1)} mmol/L (3.5-5.1)
-Urea: {fake.pyfloat(left_digits=1, right_digits=1, min_value=2.5, max_value=7.5)} mmol/L (2.5-7.5)
-Creatinine: {fake.random_int(min=60, max=120)} μmol/L (60-120)"""
+    return f"""Sodium: {safe_faker_call('random_int', min=136, max=145)} mmol/L (136-145)
+Potassium: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=3.5, max_value=5.1)} mmol/L (3.5-5.1)
+Urea: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=2.5, max_value=7.5)} mmol/L (2.5-7.5)
+Creatinine: {safe_faker_call('random_int', min=60, max=120)} μmol/L (60-120)"""
 
 def generate_lft_results():
     """Generate Liver Function Tests results"""
-    return f"""ALT: {fake.random_int(min=10, max=50)} U/L (10-50)
-AST: {fake.random_int(min=10, max=40)} U/L (10-40)
-ALP: {fake.random_int(min=40, max=150)} U/L (40-150)
-Bilirubin: {fake.random_int(min=3, max=20)} μmol/L (3-20)"""
+    return f"""ALT: {safe_faker_call('random_int', min=10, max=50)} U/L (10-50)
+AST: {safe_faker_call('random_int', min=10, max=40)} U/L (10-40)
+ALP: {safe_faker_call('random_int', min=40, max=150)} U/L (40-150)
+Bilirubin: {safe_faker_call('random_int', min=3, max=20)} μmol/L (3-20)"""
 
 def generate_hba1c_results():
     """Generate HbA1c results"""
-    hba1c_mmol = fake.random_int(min=35, max=65)
+    hba1c_mmol = safe_faker_call('random_int', min=35, max=65)
+    # Handle potential default value from safe_faker_call
+    if hba1c_mmol == 'DefaultValue':
+        hba1c_mmol = 42  # Default reasonable value
     hba1c_percent = round(((hba1c_mmol / 10.929) - 2.15), 1)
     return f"HbA1c: {hba1c_mmol} mmol/mol ({hba1c_percent}%) (≤42 mmol/mol)"
 
 def generate_crp_results():
     """Generate C-Reactive Protein results"""
-    return f"CRP: {fake.pyfloat(left_digits=1, right_digits=1, min_value=0.5, max_value=8.0)} mg/L (<8.0)"
+    return f"CRP: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=0.5, max_value=8.0)} mg/L (<8.0)"
 
 def generate_troponin_results():
     """Generate Troponin results"""
-    return f"Troponin I: {fake.pyfloat(left_digits=1, right_digits=2, min_value=0.01, max_value=0.04)} ng/mL (<0.04)"
+    return f"Troponin I: {safe_faker_call('pyfloat', left_digits=1, right_digits=2, min_value=0.01, max_value=0.04)} ng/mL (<0.04)"
 
 def generate_glucose_results():
     """Generate Random Glucose results"""
-    return f"Glucose: {fake.pyfloat(left_digits=1, right_digits=1, min_value=4.0, max_value=7.8)} mmol/L (4.0-7.8)"
+    return f"Glucose: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=4.0, max_value=7.8)} mmol/L (4.0-7.8)"
 
 def generate_psa_results():
     """Generate PSA results"""
-    return f"PSA: {fake.pyfloat(left_digits=1, right_digits=2, min_value=0.5, max_value=4.0)} ng/mL (<4.0)"
+    return f"PSA: {safe_faker_call('pyfloat', left_digits=1, right_digits=2, min_value=0.5, max_value=4.0)} ng/mL (<4.0)"
 
 def generate_inr_results():
     """Generate INR results"""
-    return f"INR: {fake.pyfloat(left_digits=1, right_digits=1, min_value=0.8, max_value=1.2)} (0.8-1.2)"
+    return f"INR: {safe_faker_call('pyfloat', left_digits=1, right_digits=1, min_value=0.8, max_value=1.2)} (0.8-1.2)"
 
 def generate_urinalysis_results():
     """Generate Urinalysis results"""
-    protein = fake.random_element(elements=["Negative", "Trace", "+"])
-    glucose = fake.random_element(elements=["Negative", "Trace"])
-    blood = fake.random_element(elements=["Negative", "Trace"])
+    protein = safe_faker_call('random_element', elements=["Negative", "Trace", "+"])
+    glucose = safe_faker_call('random_element', elements=["Negative", "Trace"])
+    blood = safe_faker_call('random_element', elements=["Negative", "Trace"])
     return f"""Protein: {protein}
 Glucose: {glucose}  
 Blood: {blood}
@@ -821,7 +835,7 @@ def create_hl7_message_xml(msg_type_id):
     msg_info = HEALTHLINK_MESSAGES[msg_type_id]
     patient = generate_patient_data()
     doctor = generate_doctor_data()
-    hospital = fake.random_element(elements=IRISH_HOSPITALS)
+    hospital = safe_faker_call('random_element', elements=IRISH_HOSPITALS)
     
     # Generate message metadata with realistic format from samples
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -884,11 +898,11 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     pv1 = ET.SubElement(patient_visit, "PV1")
     
     pv1_2 = ET.SubElement(pv1, "PV1.2")
-    pv1_2.text = fake.random_element(elements=("I", "O", "E", "G"))  # Patient class
+    pv1_2.text = safe_faker_call('random_element', elements=("I", "O", "E", "G"))  # Patient class
     
     pv1_3 = ET.SubElement(pv1, "PV1.3")
     pl1 = ET.SubElement(pv1_3, "PL.1")
-    pl1.text = fake.random_element(elements=("LTESGP", "WARD1", "ICU", "ED", "OPD"))  # From samples
+    pl1.text = safe_faker_call('random_element', elements=("LTESGP", "WARD1", "ICU", "ED", "OPD"))  # From samples
     pl2 = ET.SubElement(pv1_3, "PL.2")  # Usually empty
     pl3 = ET.SubElement(pv1_3, "PL.3")  # Usually empty
     pl4 = ET.SubElement(pv1_3, "PL.4")
@@ -919,25 +933,29 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     obr_2 = ET.SubElement(obr, "OBR.2")
     ei1_2 = ET.SubElement(obr_2, "EI.1")
     # Generate a 10-digit number by combining two smaller ranges
-    part1 = fake.random_int(min=6000, max=9999)
-    part2 = fake.random_int(min=100000, max=999999)
+    part1 = safe_faker_call('random_int', min=6000, max=9999)
+    part2 = safe_faker_call('random_int', min=100000, max=999999)
     ei1_2.text = f"{part1}{part2}{hospital['name'][:4].upper()}"  # Like 6460930602MMHH
     ei2_2 = ET.SubElement(obr_2, "EI.2")  # Usually empty
     
     # OBR.3 - Filler Order Number (from samples)
     obr_3 = ET.SubElement(obr, "OBR.3")
     ei1_3 = ET.SubElement(obr_3, "EI.1")
-    ei1_3.text = f"JS{fake.random_int(min=100000, max=999999)}{fake.random_element(elements=['A','B','C','D'])}"  # Like JS008002B
+    ei1_3.text = f"JS{safe_faker_call('random_int', min=100000, max=999999)}{safe_faker_call('random_element', elements=['A','B','C','D'])}"  # Like JS008002B
     ei2_3 = ET.SubElement(obr_3, "EI.2")  # Usually empty
     ei3_3 = ET.SubElement(obr_3, "EI.3")  # Usually empty
     ei4_3 = ET.SubElement(obr_3, "EI.4")  # Usually empty
     
     obr_4 = ET.SubElement(obr, "OBR.4")
-    test = fake.random_element(elements=LAB_TESTS)
+    test = safe_faker_call('random_element', elements=LAB_TESTS)
+    # Handle case where safe_faker_call returns default value
+    if test == 'DefaultValue' or not isinstance(test, dict):
+        test = LAB_TESTS[0]  # Use first test as fallback
+    
     ce1 = ET.SubElement(obr_4, "CE.1")
-    ce1.text = test["code"]
+    ce1.text = test.get("code", "UNKNOWN")
     ce2 = ET.SubElement(obr_4, "CE.2")
-    ce2.text = test["name"]
+    ce2.text = test.get("name", "Unknown Test")
     ce3 = ET.SubElement(obr_4, "CE.3")
     ce3.text = "L"
     ce4 = ET.SubElement(obr_4, "CE.4")  # Usually empty
@@ -987,9 +1005,9 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     
     obx_3 = ET.SubElement(obx, "OBX.3")
     ce1_obx = ET.SubElement(obx_3, "CE.1")
-    ce1_obx.text = test["code"]
+    ce1_obx.text = test.get("code", "UNKNOWN")
     ce2_obx = ET.SubElement(obx_3, "CE.2")
-    ce2_obx.text = test["name"]
+    ce2_obx.text = test.get("name", "Unknown Test")
     ce3_obx = ET.SubElement(obx_3, "CE.3")
     ce3_obx.text = "L"
     
@@ -1001,23 +1019,23 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
         # Use AI-enhanced radiology report generation
         if azure_openai_client:
             try:
-                exam_type = test["name"] if "name" in test else test["code"]
+                exam_type = test.get("name", test.get("code", "Unknown"))
                 obx_5.text = generate_ai_enhanced_radiology_report(exam_type, patient)
             except:
                 # Fallback to basic radiology report
-                obx_5.text = f"{test['name']}: Normal study. No acute abnormality detected."
+                obx_5.text = f"{test.get('name', 'Unknown Test')}: Normal study. No acute abnormality detected."
         else:
-            obx_5.text = f"{test['name']}: Normal study. No acute abnormality detected."
+            obx_5.text = f"{test.get('name', 'Unknown Test')}: Normal study. No acute abnormality detected."
     else:
         # Use AI-enhanced lab result generation for lab results
         if azure_openai_client:
             try:
-                obx_5.text = generate_ai_enhanced_lab_result(test["code"], test["name"], patient)
+                obx_5.text = generate_ai_enhanced_lab_result(test.get("code", "UNKNOWN"), test.get("name", "Unknown Test"), patient)
             except:
                 # Fallback to regular generation if AI fails
-                obx_5.text = generate_lab_result(test["code"])
+                obx_5.text = generate_lab_result(test.get("code", "UNKNOWN"))
         else:
-            obx_5.text = generate_lab_result(test["code"])
+            obx_5.text = generate_lab_result(test.get("code", "UNKNOWN"))
     
     obx_11 = ET.SubElement(obx, "OBX.11")
     obx_11.text = "F"  # Final
@@ -1030,18 +1048,19 @@ def create_oru_r01_segments(root, patient, hospital, timestamp, msg_type_id=10):
     
     if is_radiology:
         # Additional radiology interpretation notes
-        nte_3.text = generate_ai_enhanced_clinical_notes("RADIOLOGY", patient, f"{test['name']} interpretation")
+        nte_3.text = generate_ai_enhanced_clinical_notes("RADIOLOGY", patient, f"{test.get('name', 'Unknown Test')} interpretation")
     else:
         # Additional lab result interpretation notes
-        nte_3.text = generate_ai_enhanced_clinical_notes("LABORATORY", patient, f"{test['name']} results")
+        nte_3.text = generate_ai_enhanced_clinical_notes("LABORATORY", patient, f"{test.get('name', 'Unknown Test')} results")
     
     return root
 
-# Azure Functions HTTP triggers
-@app.route(route="generate_random_message", auth_level=func.AuthLevel.ANONYMOUS)
+# Azure Functions HTTP triggers - following latest template structure
+@app.route(route="generate_random_message")
 def generate_random_message(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function to generate random HL7 messages based on HealthLink specification.
+    Follows the latest Azure Functions Python v2 template structure.
     """
     logger.info('Python HTTP trigger function processed a request.')
     
@@ -1063,7 +1082,7 @@ def generate_random_message(req: func.HttpRequest) -> func.HttpResponse:
             except ValueError:
                 return func.HttpResponse("message_type_id must be an integer", status_code=400)
         else:
-            random_message_type_id = fake.random_element(elements=list(HEALTHLINK_MESSAGES.keys()))
+            random_message_type_id = safe_faker_call('random_element', elements=list(HEALTHLINK_MESSAGES.keys()))
         
         # Generate HL7 message
         hl7_xml_element = create_hl7_message_xml(random_message_type_id)
@@ -1085,7 +1104,7 @@ def generate_random_message(req: func.HttpRequest) -> func.HttpResponse:
         logger.error(f"Error generating HL7 message: {str(e)}")
         return func.HttpResponse(f"Error generating message: {str(e)}", status_code=500)
 
-@app.route(route="list_message_types", auth_level=func.AuthLevel.ANONYMOUS)  
+@app.route(route="list_message_types")
 def list_message_types(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function to list all available HealthLink message types.
@@ -1109,7 +1128,7 @@ def list_message_types(req: func.HttpRequest) -> func.HttpResponse:
         logger.error(f"Error listing message types: {str(e)}")
         return func.HttpResponse(f"Error: {str(e)}", status_code=500)
 
-@app.route(route="generate_specific_message", auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="generate_specific_message")
 def generate_specific_message(req: func.HttpRequest) -> func.HttpResponse:
     """
     Azure Function to generate a specific HL7 message type with optional formatting.
@@ -1160,7 +1179,7 @@ def generate_specific_message(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"Error: {str(e)}", status_code=500)
 
 
-@app.route(route="health", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+@app.route(route="health", methods=["GET"])
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """
     Health check endpoint for Azure deployment verification.
@@ -1206,7 +1225,7 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
 
 
 # Add a simple root endpoint for Azure deployment testing
-@app.route(route="", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+@app.route(route="", methods=["GET"])
 def root_endpoint(req: func.HttpRequest) -> func.HttpResponse:
     """
     Root endpoint providing API documentation.

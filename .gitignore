@@ -213,3 +213,5 @@ Spec/
 
 # Azure Functions local settings (may contain sensitive data)
 local.settings.json
+
+.python_packages
